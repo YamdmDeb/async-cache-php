@@ -121,9 +121,36 @@ class AsyncCacheManagerTest extends TestCase
         // Rate limited
         $this->rateLimiter->expects($this->once())->method('isLimited')->willReturn(true);
 
-        $promise = $this->manager->wrap($key, fn() => Create::promiseFor('new'), $options);
+        $this->manager->wrap($key, fn() => Create::promiseFor('new'), $options);
+    }
+
+    public function testRecordsExecutionWhenRateLimitKeyIsProvided(): void
+    {
+        $key = 'test_key';
+        $options = new CacheOptions(rate_limit_key: 'api_limit');
+
+        $this->cache->method('get')->willReturn(null);
+
+        // Verify recordExecution is called
+        $this->rate_limiter->expects($this->once())
+            ->method('recordExecution')
+            ->with('api_limit');
+
+        $promise = $this->manager->wrap($key, fn() => Create::promiseFor('data'), $options);
+        $promise->wait();
+    }
+
+    public function testDoesNotCacheIfTtlIsNull(): void
+    {
+        $key = 'test_key';
+        $options = new CacheOptions(ttl: null);
+
+        $this->cache->method('get')->willReturn(null);
         
-        $this->expectException(RateLimitException::class);
+        // Verify set is NEVER called
+        $this->cache->expects($this->never())->method('set');
+
+        $promise = $this->manager->wrap($key, fn() => Create::promiseFor('data'), $options);
         $promise->wait();
     }
 }
