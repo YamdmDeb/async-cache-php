@@ -88,12 +88,12 @@ The `CacheOptions` DTO allows you to configure behavior per request:
 
 ```php
 new CacheOptions(
-    ttl: 300,                    // Time in seconds data is considered fresh
-    rate_limit_key: 'nominatim', // Key for rate limiting (null to disable)
-    serve_stale_if_limited: true,// Return stale data if rate limited
-    stale_grace_period: 86400,   // Keep stale data physically in cache for 24h
-    force_refresh: false,        // Ignore cache and force new request
-    tags: ['geo', 'kyiv']        // Cache tags (if adapter supports them)
+    ttl: 300,                     // Time in seconds data is considered fresh
+    rate_limit_key: 'nominatim',  // Key for rate limiting (null to disable)
+    serve_stale_if_limited: true, // Return stale data if rate limited
+    stale_grace_period: 86400,    // Keep stale data physically in cache for 24h
+    force_refresh: false,         // Ignore cache and force new request
+    tags: ['geo', 'kyiv']         // Cache tags (if adapter supports them)
 );
 ```
 
