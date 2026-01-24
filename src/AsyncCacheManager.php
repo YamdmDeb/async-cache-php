@@ -113,4 +113,25 @@ class AsyncCacheManager
 
         $this->cache_adapter->set($key, $wrapper, $physical_ttl);
     }
+
+    /**
+     * Wipes the entire cache's keys
+     *
+     * @return bool True on success and false on failure
+     */
+    public function clear(): bool
+    {
+        return $this->cache_adapter->clear();
+    }
+
+    /**
+     * Delete an item from the cache by its unique key
+     *
+     * @param  string  $key  The unique cache key of the item to delete
+     * @return bool True if the item was successfully removed, false if there was an error
+     */
+    public function delete(string $key): bool
+    {
+        return $this->cache_adapter->delete($key);
+    }
 }
