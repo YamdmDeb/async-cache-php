@@ -1,5 +1,8 @@
 # Async Cache PHP
 
+[![Latest Stable Version](https://img.shields.io/packagist/v/fyennyi/async-cache-php.svg?label=Packagist&logo=packagist)](https://packagist.org/packages/fyennyi/async-cache-php)
+[![License](https://img.shields.io/packagist/l/fyennyi/async-cache-php.svg?label=Licence&logo=open-source-initiative)](https://packagist.org/packages/fyennyi/async-cache-php)
+
 An asynchronous caching abstraction layer for PHP with built-in rate limiting and stale-while-revalidate support.
 
 ## Overview
