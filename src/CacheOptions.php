@@ -20,6 +20,8 @@ class CacheOptions
         public int $stale_grace_period = 86400,
         public bool $serve_stale_if_limited = true,
         public bool $background_refresh = false,
+        public bool $compression = false,
+        public int $compression_threshold = 1024,
         public ?string $rate_limit_key = null,
         public bool $force_refresh = false
     ) {
