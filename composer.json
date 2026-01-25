@@ -9,6 +9,13 @@
             "email": "chernegasergiy3@gmail.com"
         }
     ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Fyennyi\\AsyncCache\\Bridge\\Laravel\\AsyncCacheServiceProvider"
+            ]
+        }
+    },
     "require": {
         "php": ">=8.1",
         "guzzlehttp/promises": "^1.5 || ^2.0",
