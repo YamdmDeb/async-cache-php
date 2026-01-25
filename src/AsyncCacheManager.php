@@ -134,4 +134,14 @@ class AsyncCacheManager
     {
         return $this->cache_adapter->delete($key);
     }
+
+    /**
+     * Returns the rate limiter instance
+     *
+     * @return RateLimiterInterface
+     */
+    public function getRateLimiter() : RateLimiterInterface
+    {
+        return $this->rate_limiter;
+    }
 }
