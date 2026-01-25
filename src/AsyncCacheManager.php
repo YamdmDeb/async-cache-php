@@ -7,6 +7,8 @@ use Fyennyi\AsyncCache\Model\CachedItem;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
+use Fyennyi\AsyncCache\Lock\LockInterface;
+use Fyennyi\AsyncCache\Lock\InMemoryLockAdapter;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Log\LoggerInterface;
@@ -25,15 +27,18 @@ class AsyncCacheManager
      * @param  RateLimiterInterface|null  $rate_limiter  The rate limiter implementation
      * @param  string  $rate_limiter_type  Type of rate limiter to use
      * @param  LoggerInterface|null  $logger  The PSR-3 logger implementation
+     * @param  LockInterface|null  $lock_provider  The distributed lock provider
      */
     public function __construct(
         private CacheInterface $cache_adapter,
         private ?RateLimiterInterface $rate_limiter = null,
         private string $rate_limiter_type = 'auto',
-        private ?LoggerInterface $logger = null
+        private ?LoggerInterface $logger = null,
+        private ?LockInterface $lock_provider = null
     ) {
         $this->logger = $this->logger ?? new NullLogger();
         $this->storage = new CacheStorage($this->cache_adapter, $this->logger);
+        $this->lock_provider = $this->lock_provider ?? new InMemoryLockAdapter();
 
         if ($this->rate_limiter === null) {
             $this->rate_limiter = match ($this->rate_limiter_type) {
@@ -47,11 +52,6 @@ class AsyncCacheManager
 
     /**
      * Wraps an asynchronous operation with caching, rate limiting, and stale-data fallback
-     *
-     * @param  string  $key  Unique cache key for the data
-     * @param  callable(): PromiseInterface  $promise_factory  Function that returns the Promise to execute
-     * @param  CacheOptions  $options  Configuration for this request
-     * @return PromiseInterface
      */
     public function wrap(string $key, callable $promise_factory, CacheOptions $options) : PromiseInterface
     {
@@ -71,68 +71,70 @@ class AsyncCacheManager
             // Cache is stale. Can we do background refresh?
             if ($options->background_refresh && ! $options->force_refresh) {
                 $this->logger->info('AsyncCache STALE: triggering background refresh', ['key' => $key]);
-                $this->fetch($key, $promise_factory, $options);
+                $this->fetch($key, $promise_factory, $options, $cached_item);
                 return Create::promiseFor($cached_item->data);
             }
         }
 
-        // 3. Cache is missed or stale (No background refresh or not available).
-        
-        // --- Promise Coalescing Start ---
+        // 3. Cache is missed or stale
+        return $this->fetch($key, $promise_factory, $options, $cached_item);
+    }
+
+    /**
+     * Internal method to fetch fresh data, handle rate limiting, caching, coalescing and locking
+     */
+    private function fetch(string $key, callable $promise_factory, CacheOptions $options, ?CachedItem $stale_item = null) : PromiseInterface
+    {
+        // 1. Local Promise Coalescing (within this process)
         if (isset($this->pending_promises[$key])) {
             $this->logger->info('AsyncCache COALESCE: reusing pending promise', ['key' => $key]);
             return $this->pending_promises[$key];
         }
-        // --- Promise Coalescing End ---
+
+        // 2. Distributed Locking (between multiple servers/processes)
+        // We use a non-blocking lock attempt. If someone else is fetching, we use stale data.
+        $lock_key = 'lock:' . $key;
+        if (! $this->lock_provider->acquire($lock_key, 30.0, false)) {
+            if ($stale_item !== null) {
+                $this->logger->info('AsyncCache LOCK_BUSY: another process is fetching, serving stale data', ['key' => $key]);
+                return Create::promiseFor($stale_item->data);
+            }
+            // If no stale data and lock busy, we wait or fail. For now, we try to get lock with short block.
+            if (! $this->lock_provider->acquire($lock_key, 30.0, true)) {
+                return Create::rejectionFor(new \RuntimeException("Could not acquire lock for key: $key"));
+            }
+        }
 
         $is_rate_limited = false;
         if ($options->rate_limit_key) {
             $is_rate_limited = $this->rate_limiter->isLimited($options->rate_limit_key);
         }
 
-        // 4. Stale Fallback Strategy
+        // Stale Fallback Strategy (Rate Limited)
         if ($is_rate_limited) {
-            if ($options->serve_stale_if_limited && $cached_item instanceof CachedItem) {
-                $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', [
-                    'key' => $key,
-                    'rate_limit_key' => $options->rate_limit_key
-                ]);
-                return Create::promiseFor($cached_item->data);
+            $this->lock_provider->release($lock_key);
+            if ($options->serve_stale_if_limited && $stale_item !== null) {
+                $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', ['key' => $key]);
+                return Create::promiseFor($stale_item->data);
             }
-
-            $this->logger->error('AsyncCache RATE_LIMIT: execution blocked', [
-                'key' => $key,
-                'rate_limit_key' => $options->rate_limit_key
-            ]);
             return Create::rejectionFor(new RateLimitException($options->rate_limit_key));
         }
 
-        // 5. Execute actual request
-        $this->logger->info('AsyncCache MISS: fetching fresh data', ['key' => $key]);
-        return $this->fetch($key, $promise_factory, $options);
-    }
-
-    /**
-     * Internal method to fetch fresh data, handle rate limiting, caching and coalescing
-     */
-    private function fetch(string $key, callable $promise_factory, CacheOptions $options) : PromiseInterface
-    {
-        if (isset($this->pending_promises[$key])) {
-            return $this->pending_promises[$key];
-        }
-
+        $this->logger->info('AsyncCache MISS/STALE: fetching fresh data', ['key' => $key]);
         if ($options->rate_limit_key) {
             $this->rate_limiter->recordExecution($options->rate_limit_key);
         }
 
         $promise = $promise_factory()->then(
-            function ($data) use ($key, $options) {
+            function ($data) use ($key, $options, $lock_key) {
                 unset($this->pending_promises[$key]);
+                $this->lock_provider->release($lock_key);
                 $this->storage->set($key, $data, $options);
                 return $data;
             },
-            function ($reason) use ($key) {
+            function ($reason) use ($key, $lock_key) {
                 unset($this->pending_promises[$key]);
+                $this->lock_provider->release($lock_key);
                 $this->logger->error('AsyncCache FETCH_ERROR: failed to fetch fresh data', [
                     'key' => $key,
                     'reason' => $reason
@@ -145,36 +147,12 @@ class AsyncCacheManager
     }
 
     /**
-     * Wipes the entire cache's keys
+     * Proxy methods for cache operations
      */
-    public function clear() : bool
-    {
-        return $this->storage->clear();
-    }
-
-    /**
-     * Delete an item from the cache by its unique key
-     */
-    public function delete(string $key) : bool
-    {
-        return $this->storage->delete($key);
-    }
-
-    /**
-     * Returns the rate limiter instance
-     */
-    public function getRateLimiter() : RateLimiterInterface
-    {
-        return $this->rate_limiter;
-    }
-
-    /**
-     * Clears the rate limiter state
-     */
-    public function clearRateLimiter(?string $key = null) : void
-    {
-        if (method_exists($this->rate_limiter, 'clear')) {
-            $this->rate_limiter->clear($key);
-        }
+    public function clear() : bool { return $this->storage->clear(); }
+    public function delete(string $key) : bool { return $this->storage->delete($key); }
+    public function getRateLimiter() : RateLimiterInterface { return $this->rate_limiter; }
+    public function clearRateLimiter(?string $key = null) : void { 
+        if (method_exists($this->rate_limiter, 'clear')) { $this->rate_limiter->clear($key); }
     }
 }
