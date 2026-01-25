@@ -2,6 +2,7 @@
 
 namespace Fyennyi\AsyncCache\RateLimiter;
 
+use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Psr\SimpleCache\CacheInterface;
 
 /**
@@ -12,16 +13,16 @@ class RateLimiterFactory
     /**
      * Create a rate limiter instance
      *
-     * @param  string  $type  Type of rate limiter ('in_memory', 'symfony')
+     * @param  RateLimiterType  $type  Type of rate limiter
      * @param  CacheInterface|null  $cache  Optional cache for persistent storage
      * @return RateLimiterInterface
      */
-    public static function create(string $type = 'in_memory', ?CacheInterface $cache = null) : RateLimiterInterface
+    public static function create(RateLimiterType $type = RateLimiterType::InMemory, ?CacheInterface $cache = null) : RateLimiterInterface
     {
         return match ($type) {
-            'symfony' => new SymfonyRateLimiter(),
-            'in_memory' => new InMemoryRateLimiter(),
-            default => throw new \InvalidArgumentException("Unknown rate limiter type: {$type}")
+            RateLimiterType::Symfony => new SymfonyRateLimiter(),
+            RateLimiterType::InMemory => new InMemoryRateLimiter(),
+            RateLimiterType::Auto => self::createBest($cache),
         };
     }
 
@@ -37,7 +38,7 @@ class RateLimiterFactory
         if (class_exists('\Symfony\Component\RateLimiter\RateLimiterFactory')) {
             return new SymfonyRateLimiter();
         }
-        
+
         // Fallback to in-memory
         return new InMemoryRateLimiter();
     }

@@ -3,6 +3,8 @@
 namespace Fyennyi\AsyncCache\Core;
 
 use Fyennyi\AsyncCache\CacheOptions;
+use Fyennyi\AsyncCache\Enum\CacheStrategy;
+use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Exception\RateLimitException;
 use Fyennyi\AsyncCache\Model\CachedItem;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
@@ -33,23 +35,28 @@ class CacheResolver
      */
     public function resolve(string $key, callable $promise_factory, CacheOptions $options): PromiseInterface
     {
-        // 1. Try to fetch from cache
-        $cached_item = null;
-        if (!$options->force_refresh) {
-            $cached_item = $this->storage->get($key, $options);
+        // 1. Force Refresh Strategy
+        if ($options->strategy === CacheStrategy::ForceRefresh) {
+            $this->logger->info('AsyncCache BYPASS: force refresh requested', ['key' => $key, 'status' => CacheStatus::Bypass->value]);
+            return $this->fetch($key, $promise_factory, $options);
         }
 
-        // 2. Freshness and X-Fetch check
+        // 2. Try to fetch from cache
+        $cached_item = $this->storage->get($key, $options);
+
+        // 3. Cache Hit and Freshness check
         if ($cached_item instanceof CachedItem) {
             $is_fresh = $cached_item->isFresh();
 
+            // Probabilistic Early Expiration (X-Fetch)
             if ($is_fresh && $options->x_fetch_beta > 0 && $cached_item->generationTime > 0) {
                 $rand = mt_rand(1, mt_getrandmax()) / mt_getrandmax();
                 $check = time() - ($cached_item->generationTime * $options->x_fetch_beta * log($rand));
                 
                 if ($check > $cached_item->logicalExpireTime) {
                     $this->logger->info('AsyncCache X-FETCH: probabilistic early expiration triggered', [
-                        'key' => $key,
+                        'key' => $key, 
+                        'status' => CacheStatus::XFetch->value,
                         'ttl_left' => $cached_item->logicalExpireTime - time()
                     ]);
                     $is_fresh = false;
@@ -57,18 +64,19 @@ class CacheResolver
             }
 
             if ($is_fresh) {
-                $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key]);
+                $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key, 'status' => CacheStatus::Hit->value]);
                 return Create::promiseFor($cached_item->data);
             }
 
-            // Background refresh
-            if ($options->background_refresh && !$options->force_refresh) {
-                $this->logger->info('AsyncCache STALE: triggering background refresh', ['key' => $key]);
+            // 4. Stale-While-Revalidate (Background Strategy)
+            if ($options->strategy === CacheStrategy::Background) {
+                $this->logger->info('AsyncCache STALE: triggering background refresh', ['key' => $key, 'status' => CacheStatus::Stale->value]);
                 $this->fetch($key, $promise_factory, $options, $cached_item);
                 return Create::promiseFor($cached_item->data);
             }
         }
 
+        // 5. Cache Miss or Expired (Strict Strategy)
         return $this->fetch($key, $promise_factory, $options, $cached_item);
     }
 
@@ -85,7 +93,7 @@ class CacheResolver
         $lock_key = 'lock:' . $key;
         if (!$this->lock_provider->acquire($lock_key, 30.0, false)) {
             if ($stale_item !== null) {
-                $this->logger->info('AsyncCache LOCK_BUSY: serving stale data', ['key' => $key]);
+                $this->logger->info('AsyncCache LOCK_BUSY: serving stale data', ['key' => $key, 'status' => CacheStatus::Stale->value]);
                 return Create::promiseFor($stale_item->data);
             }
             if (!$this->lock_provider->acquire($lock_key, 30.0, true)) {
@@ -96,13 +104,14 @@ class CacheResolver
         if ($options->rate_limit_key && $this->rate_limiter->isLimited($options->rate_limit_key)) {
             $this->lock_provider->release($lock_key);
             if ($options->serve_stale_if_limited && $stale_item !== null) {
-                $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', ['key' => $key]);
+                $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', ['key' => $key, 'status' => CacheStatus::RateLimited->value]);
                 return Create::promiseFor($stale_item->data);
             }
             return Create::rejectionFor(new RateLimitException($options->rate_limit_key));
         }
 
-        $this->logger->info('AsyncCache MISS/STALE: fetching fresh data', ['key' => $key]);
+        $this->logger->info('AsyncCache MISS: fetching fresh data', ['key' => $key, 'status' => CacheStatus::Miss->value]);
+        
         if ($options->rate_limit_key) {
             $this->rate_limiter->recordExecution($options->rate_limit_key);
         }

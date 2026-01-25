@@ -4,6 +4,7 @@ namespace Fyennyi\AsyncCache;
 
 use Fyennyi\AsyncCache\Core\CacheResolver;
 use Fyennyi\AsyncCache\Core\Pipeline;
+use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Fyennyi\AsyncCache\Lock\InMemoryLockAdapter;
 use Fyennyi\AsyncCache\Lock\LockInterface;
 use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
@@ -23,7 +24,7 @@ class AsyncCacheManager
     /**
      * @param  CacheInterface  $cache_adapter  The PSR-16 cache implementation
      * @param  RateLimiterInterface|null  $rate_limiter  The rate limiter implementation
-     * @param  string  $rate_limiter_type  Type of rate limiter to use
+     * @param  RateLimiterType  $rate_limiter_type  Type of rate limiter to use
      * @param  LoggerInterface|null  $logger  The PSR-3 logger implementation
      * @param  LockInterface|null  $lock_provider  The distributed lock provider
      * @param  MiddlewareInterface[]  $middlewares  Optional middleware stack
@@ -31,7 +32,7 @@ class AsyncCacheManager
     public function __construct(
         private CacheInterface $cache_adapter,
         private ?RateLimiterInterface $rate_limiter = null,
-        private string $rate_limiter_type = 'auto',
+        private RateLimiterType $rate_limiter_type = RateLimiterType::Auto,
         private ?LoggerInterface $logger = null,
         private ?LockInterface $lock_provider = null,
         array $middlewares = []
@@ -42,12 +43,7 @@ class AsyncCacheManager
         $this->lock_provider = $this->lock_provider ?? new InMemoryLockAdapter();
 
         if ($this->rate_limiter === null) {
-            $this->rate_limiter = match ($this->rate_limiter_type) {
-                'symfony' => RateLimiterFactory::create('symfony', $this->cache_adapter),
-                'in_memory' => RateLimiterFactory::create('in_memory', $this->cache_adapter),
-                'auto' => RateLimiterFactory::createBest($this->cache_adapter),
-                default => throw new \InvalidArgumentException("Unknown rate limiter type: {$this->rate_limiter_type}")
-            };
+            $this->rate_limiter = RateLimiterFactory::create($this->rate_limiter_type, $this->cache_adapter);
         }
 
         $this->resolver = new CacheResolver(
