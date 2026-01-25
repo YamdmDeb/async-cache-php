@@ -7,11 +7,14 @@ namespace Fyennyi\AsyncCache\Model;
  */
 class CachedItem
 {
+    public const CURRENT_VERSION = 1;
+
     public function __construct(
         public readonly mixed $data,
         public readonly int $logicalExpireTime,
-        public readonly int $version = 1,
-        public readonly bool $isCompressed = false
+        public readonly int $version = self::CURRENT_VERSION,
+        public readonly bool $isCompressed = false,
+        public readonly float $generationTime = 0.0
     ) {
     }
 
