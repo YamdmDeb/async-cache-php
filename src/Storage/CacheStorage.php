@@ -48,7 +48,8 @@ class CacheStorage
                         data: $data,
                         logicalExpireTime: $cached_item->logicalExpireTime,
                         version: $cached_item->version,
-                        isCompressed: false
+                        isCompressed: false,
+                        generationTime: $cached_item->generationTime
                     );
                 }
                 
@@ -73,7 +74,7 @@ class CacheStorage
     /**
      * Stores an item in the cache, handles compression and fail-safe
      */
-    public function set(string $key, mixed $data, CacheOptions $options): bool
+    public function set(string $key, mixed $data, CacheOptions $options, float $generationTime = 0.0): bool
     {
         try {
             $logical_ttl = $options->ttl;
@@ -99,7 +100,8 @@ class CacheStorage
             $item = new CachedItem(
                 data: $data,
                 logicalExpireTime: time() + $logical_ttl,
-                isCompressed: $is_compressed
+                isCompressed: $is_compressed,
+                generationTime: $generationTime
             );
 
             return $this->adapter->set($key, $item, $physical_ttl);
