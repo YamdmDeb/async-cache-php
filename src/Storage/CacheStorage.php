@@ -109,6 +109,11 @@ class CacheStorage
                     if ($compressed_data !== false) {
                         $data = $compressed_data;
                         $is_compressed = true;
+                        $this->logger->debug('AsyncCache COMPRESSION: data compressed', [
+                            'key' => $key,
+                            'original_size' => strlen($serialized_data),
+                            'compressed_size' => strlen($compressed_data)
+                        ]);
                     }
                 }
             }
