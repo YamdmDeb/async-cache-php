@@ -54,7 +54,7 @@ class AsyncCacheManager
         // 1. Try to fetch from cache first
         $cached_item = null;
         if (! $options->force_refresh) {
-            $cached_item = $this->cache_adapter->get($key);
+            $cached_item = $this->safeCacheGet($key, $options);
         }
 
         // 2. Check if cache is fresh (Hit)
@@ -211,7 +211,45 @@ class AsyncCacheManager
             isCompressed: $is_compressed
         );
 
-        $this->cache_adapter->set($key, $wrapper, $physical_ttl);
+        $this->safeCacheSet($key, $wrapper, $physical_ttl, $options);
+    }
+
+    /**
+     * PSR-16 Get with Fail-Safe protection
+     */
+    private function safeCacheGet(string $key, CacheOptions $options): mixed
+    {
+        try {
+            return $this->cache_adapter->get($key);
+        } catch (\Throwable $e) {
+            if ($options->fail_safe) {
+                $this->logger->error('AsyncCache CACHE_GET_ERROR: adapter failed, using fail-safe miss', [
+                    'key' => $key,
+                    'exception' => $e->getMessage()
+                ]);
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * PSR-16 Set with Fail-Safe protection
+     */
+    private function safeCacheSet(string $key, mixed $value, ?int $ttl, CacheOptions $options): bool
+    {
+        try {
+            return $this->cache_adapter->set($key, $value, $ttl);
+        } catch (\Throwable $e) {
+            if ($options->fail_safe) {
+                $this->logger->error('AsyncCache CACHE_SET_ERROR: adapter failed', [
+                    'key' => $key,
+                    'exception' => $e->getMessage()
+                ]);
+                return false;
+            }
+            throw $e;
+        }
     }
 
     /**
