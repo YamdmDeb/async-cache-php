@@ -9,6 +9,8 @@ $config = new PhpCsFixer\Config();
 return $config->setRules([
     'ordered_imports' => ['sort_algorithm' => 'alpha'],
     'no_whitespace_in_blank_line' => true,
+    'no_trailing_whitespace' => true,
+    'no_unused_imports' => true,
 ])
     ->setFinder($finder)
 ;
