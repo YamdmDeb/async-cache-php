@@ -65,11 +65,3 @@ jobs:
           files: clover.xml
           token: ${{ env.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
-      - name: Upload coverage to Codacy
-        env:
-          CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
-        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
-        continue-on-error: true
-        run: |
-          curl -Ls https://coverage.codacy.com/get.sh | bash
