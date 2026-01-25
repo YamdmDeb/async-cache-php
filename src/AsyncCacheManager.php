@@ -8,6 +8,8 @@ use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
 
 class AsyncCacheManager
@@ -16,12 +18,16 @@ class AsyncCacheManager
      * @param  CacheInterface  $cache_adapter  The PSR-16 cache implementation
      * @param  RateLimiterInterface|null  $rate_limiter  The rate limiter implementation
      * @param  string  $rate_limiter_type  Type of rate limiter to use
+     * @param  LoggerInterface|null  $logger  The PSR-3 logger implementation
      */
     public function __construct(
         private CacheInterface $cache_adapter,
         private ?RateLimiterInterface $rate_limiter = null,
-        private string $rate_limiter_type = 'auto'
+        private string $rate_limiter_type = 'auto',
+        private ?LoggerInterface $logger = null
     ) {
+        $this->logger = $this->logger ?? new NullLogger();
+
         if ($this->rate_limiter === null) {
             $this->rate_limiter = match ($this->rate_limiter_type) {
                 'symfony' => RateLimiterFactory::create('symfony', $this->cache_adapter),
@@ -56,7 +62,7 @@ class AsyncCacheManager
             }
 
             if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
-                // Data is strictly fresh, return immediately
+                $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key]);
                 return Create::promiseFor($cached_item->data);
             }
         }
@@ -69,17 +75,23 @@ class AsyncCacheManager
 
         // 4. Stale Fallback Strategy
         if ($is_rate_limited) {
-            // We are limited. Can we return stale data?
             if ($options->serve_stale_if_limited && $cached_item instanceof CachedItem) {
-                // Yes, return stale data instead of failing
+                $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', [
+                    'key' => $key,
+                    'rate_limit_key' => $options->rate_limit_key
+                ]);
                 return Create::promiseFor($cached_item->data);
             }
 
-            // Cannot serve stale (or no stale data exists) -> Fail
+            $this->logger->error('AsyncCache RATE_LIMIT: execution blocked', [
+                'key' => $key,
+                'rate_limit_key' => $options->rate_limit_key
+            ]);
             return Create::rejectionFor(new RateLimitException($options->rate_limit_key));
         }
 
         // 5. Execute actual request
+        $this->logger->info('AsyncCache MISS: fetching fresh data', ['key' => $key]);
         if ($options->rate_limit_key) {
             $this->rate_limiter->recordExecution($options->rate_limit_key);
         }
@@ -88,6 +100,13 @@ class AsyncCacheManager
             function ($data) use ($key, $options) {
                 $this->storeInCache($key, $data, $options);
                 return $data;
+            },
+            function ($reason) use ($key) {
+                $this->logger->error('AsyncCache FETCH_ERROR: failed to fetch fresh data', [
+                    'key' => $key,
+                    'reason' => $reason
+                ]);
+                throw $reason;
             }
         );
     }
