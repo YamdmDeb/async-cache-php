@@ -65,6 +65,25 @@ class AsyncCacheManager
             }
 
             if ($cached_item instanceof CachedItem) {
+                // Handle decompression if needed
+                if ($cached_item->isCompressed && is_string($cached_item->data)) {
+                    $decompressed_data = @gzuncompress($cached_item->data);
+                    if ($decompressed_data !== false) {
+                        $data = unserialize($decompressed_data);
+                        $cached_item = new CachedItem(
+                            data: $data,
+                            logicalExpireTime: $cached_item->logicalExpireTime,
+                            version: $cached_item->version,
+                            isCompressed: false
+                        );
+                    } else {
+                        $this->logger->error('AsyncCache DECOMPRESSION_ERROR: failed to decompress data', ['key' => $key]);
+                        $cached_item = null; // Treat as miss if decompression fails
+                    }
+                }
+            }
+
+            if ($cached_item instanceof CachedItem) {
                 if ($cached_item->isFresh()) {
                     $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key]);
                     return Create::promiseFor($cached_item->data);
@@ -169,9 +188,27 @@ class AsyncCacheManager
         // Physical TTL = Logical TTL + Grace Period (to allow serving stale data)
         $physical_ttl = $logical_ttl + $options->stale_grace_period;
 
+        $is_compressed = false;
+        if ($options->compression) {
+            $serialized_data = serialize($data);
+            if (strlen($serialized_data) >= $options->compression_threshold) {
+                $compressed_data = @gzcompress($serialized_data);
+                if ($compressed_data !== false) {
+                    $data = $compressed_data;
+                    $is_compressed = true;
+                    $this->logger->debug('AsyncCache COMPRESSION: data compressed', [
+                        'key' => $key,
+                        'original_size' => strlen($serialized_data),
+                        'compressed_size' => strlen($compressed_data)
+                    ]);
+                }
+            }
+        }
+
         $wrapper = new CachedItem(
             data: $data,
-            logicalExpireTime: time() + $logical_ttl
+            logicalExpireTime: time() + $logical_ttl,
+            isCompressed: $is_compressed
         );
 
         $this->cache_adapter->set($key, $wrapper, $physical_ttl);
