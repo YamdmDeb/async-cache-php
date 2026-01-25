@@ -13,7 +13,7 @@ An asynchronous caching abstraction layer for PHP with built-in rate limiting an
 - **Asynchronous Caching**: Wraps `PromiseInterface` to handle caching transparently without blocking execution.
 - **Stale-While-Limited Strategy**: If the rate limit is hit, the library can return stale data (if available) instead of failing, improving resilience.
 - **Logical vs. Physical TTL**: Separates the "freshness" of data from its "existence" in the cache, enabling soft expiration patterns.
-- **Rate Limiting Interface**: Includes a simple in-memory rate limiter and an interface for persistent implementations (e.g., Redis).
+- **Rate Limiting Interface**: Includes support for multiple rate limiter implementations (InMemory, Symfony Rate Limiter) with automatic detection and factory pattern.
 - **PSR-16 Compliant**: Works with any PSR-16 Simple Cache adapter.
 
 ## Installation
@@ -21,7 +21,7 @@ An asynchronous caching abstraction layer for PHP with built-in rate limiting an
 To install the Async Cache PHP library, run the following command in your terminal:
 
 ```bash
-composer require fyennyi/async-cache-php
+ composer require fyennyi/async-cache-php
 ```
 
 ## Usage
