@@ -5,18 +5,13 @@ namespace Fyennyi\AsyncCache;
 use Fyennyi\AsyncCache\Exception\RateLimitException;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
+use Fyennyi\AsyncCache\Model\CachedItem;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\SimpleCache\CacheInterface;
 
 class AsyncCacheManager
 {
-    /**
-     * Wrapper struct to store data and logical expiration separate from physical cache TTL
-     */
-    private const KEY_DATA = 'd';
-    private const KEY_LOGICAL_EXPIRE = 'e';
-
     /**
      * @param  CacheInterface  $cache_adapter  The PSR-16 cache implementation
      * @param  RateLimiterInterface|null  $rate_limiter  The rate limiter implementation
@@ -54,12 +49,15 @@ class AsyncCacheManager
         }
 
         // 2. Check if cache is fresh (Hit)
-        if ($cached_item !== null && is_array($cached_item)) {
-            $logical_expire_at = $cached_item[self::KEY_LOGICAL_EXPIRE] ?? 0;
+        if ($cached_item !== null) {
+            // Backward compatibility: handle old array format
+            if (is_array($cached_item) && isset($cached_item['d'], $cached_item['e'])) {
+                $cached_item = new CachedItem($cached_item['d'], $cached_item['e']);
+            }
 
-            if (time() < $logical_expire_at) {
+            if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
                 // Data is strictly fresh, return immediately
-                return Create::promiseFor($cached_item[self::KEY_DATA]);
+                return Create::promiseFor($cached_item->data);
             }
         }
 
@@ -72,9 +70,9 @@ class AsyncCacheManager
         // 4. Stale Fallback Strategy
         if ($is_rate_limited) {
             // We are limited. Can we return stale data?
-            if ($options->serve_stale_if_limited && $cached_item !== null) {
+            if ($options->serve_stale_if_limited && $cached_item instanceof CachedItem) {
                 // Yes, return stale data instead of failing
-                return Create::promiseFor($cached_item[self::KEY_DATA]);
+                return Create::promiseFor($cached_item->data);
             }
 
             // Cannot serve stale (or no stale data exists) -> Fail
@@ -112,15 +110,10 @@ class AsyncCacheManager
         // Physical TTL = Logical TTL + Grace Period (to allow serving stale data)
         $physical_ttl = $logical_ttl + $options->stale_grace_period;
 
-        $wrapper = [
-            self::KEY_DATA => $data,
-            self::KEY_LOGICAL_EXPIRE => time() + $logical_ttl,
-        ];
-
-        // Note: PSR-16 SimpleCache doesn't strictly support tags in the interface,
-        // but some adapters (like Symfony's) extend it or handle it via configuration.
-        // Since we depend on strict PSR-16 here, we just use set().
-        // If advanced tagging is needed, we might need to check instanceof or use a specific adapter.
+        $wrapper = new CachedItem(
+            data: $data,
+            logicalExpireTime: time() + $logical_ttl
+        );
 
         $this->cache_adapter->set($key, $wrapper, $physical_ttl);
     }
