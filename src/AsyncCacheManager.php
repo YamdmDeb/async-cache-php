@@ -12,6 +12,7 @@ use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
 use GuzzleHttp\Promise\PromiseInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
@@ -28,6 +29,7 @@ class AsyncCacheManager
      * @param  LoggerInterface|null  $logger  The PSR-3 logger implementation
      * @param  LockInterface|null  $lock_provider  The distributed lock provider
      * @param  MiddlewareInterface[]  $middlewares  Optional middleware stack
+     * @param  EventDispatcherInterface|null  $dispatcher  The PSR-14 event dispatcher
      */
     public function __construct(
         private CacheInterface $cache_adapter,
@@ -35,7 +37,8 @@ class AsyncCacheManager
         private RateLimiterType $rate_limiter_type = RateLimiterType::Auto,
         private ?LoggerInterface $logger = null,
         private ?LockInterface $lock_provider = null,
-        array $middlewares = []
+        array $middlewares = [],
+        private ?EventDispatcherInterface $dispatcher = null
     ) {
         $this->logger = $this->logger ?? new NullLogger();
         
@@ -50,7 +53,8 @@ class AsyncCacheManager
             $storage,
             $this->rate_limiter,
             $this->lock_provider,
-            $this->logger
+            $this->logger,
+            $this->dispatcher
         );
 
         $this->pipeline = new Pipeline($middlewares);
@@ -72,11 +76,7 @@ class AsyncCacheManager
     public function clear() : bool { return $this->cache_adapter->clear(); }
     public function delete(string $key) : bool { return $this->cache_adapter->delete($key); }
     public function getRateLimiter() : RateLimiterInterface { return $this->rate_limiter; }
-    /**
-     * Clears the rate limiter state
-     */
-    public function clearRateLimiter(?string $key = null) : void
-    {
+    public function clearRateLimiter(?string $key = null) : void { 
         $this->rate_limiter->clear($key);
     }
 }
