@@ -12,11 +12,11 @@ class RateLimiterFactory
     /**
      * Create a rate limiter instance
      *
-     * @param string $type Type of rate limiter ('in_memory', 'symfony')
-     * @param CacheInterface|null $cache Optional cache for persistent storage
+     * @param  string  $type  Type of rate limiter ('in_memory', 'symfony')
+     * @param  CacheInterface|null  $cache  Optional cache for persistent storage
      * @return RateLimiterInterface
      */
-    public static function create(string $type = 'in_memory', ?CacheInterface $cache = null): RateLimiterInterface
+    public static function create(string $type = 'in_memory', ?CacheInterface $cache = null) : RateLimiterInterface
     {
         return match ($type) {
             'symfony' => new SymfonyRateLimiter(),
@@ -28,10 +28,10 @@ class RateLimiterFactory
     /**
      * Create the best available rate limiter
      * 
-     * @param CacheInterface|null $cache Optional cache for persistent storage
+     * @param  CacheInterface|null  $cache  Optional cache for persistent storage
      * @return RateLimiterInterface
      */
-    public static function createBest(?CacheInterface $cache = null): RateLimiterInterface
+    public static function createBest(?CacheInterface $cache = null) : RateLimiterInterface
     {
         // Try Symfony first (most robust)
         if (class_exists('\Symfony\Component\RateLimiter\RateLimiterFactory')) {

@@ -20,7 +20,7 @@ class AsyncCacheConfig
     /**
      * Create rate limiter based on configuration
      */
-    public function createRateLimiter(): RateLimiterInterface
+    public function createRateLimiter() : RateLimiterInterface
     {
         return match ($this->rateLimiterType) {
             'symfony' => RateLimiterFactory::create('symfony', $this->cache),

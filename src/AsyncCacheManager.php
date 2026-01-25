@@ -161,7 +161,7 @@ class AsyncCacheManager
      * 
      * @param string|null $key The key to clear, or null to clear all
      */
-    public function clearRateLimiter(?string $key = null): void
+    public function clearRateLimiter(?string $key = null) : void
     {
         // Check if rate limiter supports clearing
         if (method_exists($this->rate_limiter, 'clear')) {

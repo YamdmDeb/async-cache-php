@@ -8,8 +8,6 @@ use Symfony\Component\RateLimiter\Storage\StorageInterface;
 
 /**
  * Symfony Rate Limiter adapter for AsyncCache
- * 
- * Uses Symfony's Token Bucket implementation under the hood
  */
 class SymfonyRateLimiter implements RateLimiterInterface
 {
@@ -23,9 +21,9 @@ class SymfonyRateLimiter implements RateLimiterInterface
         $this->factory = new RateLimiterFactory([], $storage);
     }
 
-    public function isLimited(string $key): bool
+    public function isLimited(string $key) : bool
     {
-        if (!isset($this->limiters[$key])) {
+        if (! isset($this->limiters[$key])) {
             return false;
         }
 
@@ -35,9 +33,9 @@ class SymfonyRateLimiter implements RateLimiterInterface
         return !$limiter->consume(1)->isAccepted();
     }
 
-    public function recordExecution(string $key): void
+    public function recordExecution(string $key) : void
     {
-        if (!isset($this->limiters[$key])) {
+        if (! isset($this->limiters[$key])) {
             return;
         }
 
@@ -51,9 +49,9 @@ class SymfonyRateLimiter implements RateLimiterInterface
     /**
      * Clears the rate limiter state
      * 
-     * @param string|null $key The key to clear, or null to clear all
+     * @param  string|null  $key  The key to clear, or null to clear all
      */
-    public function clear(?string $key = null): void
+    public function clear(?string $key = null) : void
     {
         if ($key === null) {
             $this->limiters = [];
@@ -67,12 +65,12 @@ class SymfonyRateLimiter implements RateLimiterInterface
     /**
      * Gets configured interval for a key
      */
-    public function getInterval(string $key): int
+    public function getInterval(string $key) : int
     {
         return $this->config[$key] ?? 0;
     }
 
-    public function configure(string $key, int $seconds): void
+    public function configure(string $key, int $seconds) : void
     {
         $this->config[$key] = $seconds;
         
