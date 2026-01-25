@@ -14,6 +14,9 @@
             "providers": [
                 "Fyennyi\\AsyncCache\\Bridge\\Laravel\\AsyncCacheServiceProvider"
             ]
+        },
+        "symfony": {
+            "allow-contrib": true
         }
     },
     "require": {
