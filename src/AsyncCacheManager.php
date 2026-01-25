@@ -64,13 +64,26 @@ class AsyncCacheManager
                 $cached_item = new CachedItem($cached_item['d'], $cached_item['e']);
             }
 
-            if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
-                $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key]);
-                return Create::promiseFor($cached_item->data);
+            if ($cached_item instanceof CachedItem) {
+                if ($cached_item->isFresh()) {
+                    $this->logger->debug('AsyncCache HIT: fresh data returned', ['key' => $key]);
+                    return Create::promiseFor($cached_item->data);
+                }
+
+                // Cache is stale. Can we do background refresh?
+                if ($options->background_refresh && ! $options->force_refresh) {
+                    $this->logger->info('AsyncCache STALE: triggering background refresh', ['key' => $key]);
+                    
+                    // Trigger refresh without waiting for it
+                    $this->fetch($key, $promise_factory, $options);
+                    
+                    // Return stale data immediately
+                    return Create::promiseFor($cached_item->data);
+                }
             }
         }
 
-        // 3. Cache is missed or stale (Expired). We need to decide whether to fetch or use stale.
+        // 3. Cache is missed or stale (No background refresh or not available).
         
         // --- Promise Coalescing Start ---
         if (isset($this->pending_promises[$key])) {
@@ -103,6 +116,18 @@ class AsyncCacheManager
 
         // 5. Execute actual request
         $this->logger->info('AsyncCache MISS: fetching fresh data', ['key' => $key]);
+        return $this->fetch($key, $promise_factory, $options);
+    }
+
+    /**
+     * Internal method to fetch fresh data, handle rate limiting, caching and coalescing
+     */
+    private function fetch(string $key, callable $promise_factory, CacheOptions $options) : PromiseInterface
+    {
+        if (isset($this->pending_promises[$key])) {
+            return $this->pending_promises[$key];
+        }
+
         if ($options->rate_limit_key) {
             $this->rate_limiter->recordExecution($options->rate_limit_key);
         }
