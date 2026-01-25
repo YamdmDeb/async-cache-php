@@ -72,7 +72,11 @@ class AsyncCacheManager
     public function clear() : bool { return $this->cache_adapter->clear(); }
     public function delete(string $key) : bool { return $this->cache_adapter->delete($key); }
     public function getRateLimiter() : RateLimiterInterface { return $this->rate_limiter; }
-    public function clearRateLimiter(?string $key = null) : void { 
-        if (method_exists($this->rate_limiter, 'clear')) { $this->rate_limiter->clear($key); }
+    /**
+     * Clears the rate limiter state
+     */
+    public function clearRateLimiter(?string $key = null) : void
+    {
+        $this->rate_limiter->clear($key);
     }
 }
