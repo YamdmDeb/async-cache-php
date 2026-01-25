@@ -16,12 +16,12 @@ class CacheOptions
      * @param  array  $tags  Tags for cache invalidation (if supported by cache adapter)
      */
     public function __construct(
-        public ?int $ttl = null,
-        public ?string $rate_limit_key = null,
-        public bool $serve_stale_if_limited = true,
+        public ?int $ttl = 3600,
         public int $stale_grace_period = 86400,
-        public bool $force_refresh = false,
-        public array $tags = []
+        public bool $serve_stale_if_limited = true,
+        public bool $background_refresh = false,
+        public ?string $rate_limit_key = null,
+        public bool $force_refresh = false
     ) {
     }
 }
