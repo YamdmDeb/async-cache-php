@@ -34,4 +34,74 @@ class CacheOptions
         public array $tags = []
     ) {
     }
+
+    /**
+     * Static factory for fluent interface
+     */
+    public static function create(): self
+    {
+        return new self();
+    }
+
+    public function withTtl(?int $ttl): self
+    {
+        $this->ttl = $ttl;
+        return $this;
+    }
+
+    public function withStaleGracePeriod(int $seconds): self
+    {
+        $this->stale_grace_period = $seconds;
+        return $this;
+    }
+
+    public function withStrategy(CacheStrategy $strategy): self
+    {
+        $this->strategy = $strategy;
+        return $this;
+    }
+
+    public function withBackgroundRefresh(): self
+    {
+        $this->strategy = CacheStrategy::Background;
+        return $this;
+    }
+
+    public function withForceRefresh(): self
+    {
+        $this->strategy = CacheStrategy::ForceRefresh;
+        return $this;
+    }
+
+    public function withCompression(bool $enabled = true, int $threshold = 1024): self
+    {
+        $this->compression = $enabled;
+        $this->compression_threshold = $threshold;
+        return $this;
+    }
+
+    public function withFailSafe(bool $enabled = true): self
+    {
+        $this->fail_safe = $enabled;
+        return $this;
+    }
+
+    public function withXFetch(float $beta = 1.0): self
+    {
+        $this->x_fetch_beta = $beta;
+        return $this;
+    }
+
+    public function withRateLimit(string $key, bool $serveStale = true): self
+    {
+        $this->rate_limit_key = $key;
+        $this->serve_stale_if_limited = $serveStale;
+        return $this;
+    }
+
+    public function withTags(array $tags): self
+    {
+        $this->tags = $tags;
+        return $this;
+    }
 }
