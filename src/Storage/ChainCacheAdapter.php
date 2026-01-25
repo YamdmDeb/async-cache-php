@@ -72,7 +72,7 @@ class ChainCacheAdapter implements CacheInterface
 
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
-        // For simplicity, we implement via individual gets, 
+        // For simplicity, we implement via individual gets,
         // but a more efficient implementation would follow the get() logic
         $result = [];
         foreach ($keys as $key) {

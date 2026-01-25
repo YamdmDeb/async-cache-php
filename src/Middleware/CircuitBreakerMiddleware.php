@@ -3,7 +3,6 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\CacheOptions;
-use Fyennyi\AsyncCache\Exception\RateLimitException;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Log\LoggerInterface;
@@ -33,12 +32,12 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
     {
         $stateKey = $this->prefix . $key . ':state';
         $failureKey = $this->prefix . $key . ':failures';
-        
+
         $state = $this->storage->get($stateKey, self::STATE_CLOSED);
 
         if ($state === self::STATE_OPEN) {
             $lastFailureTime = (int) $this->storage->get($this->prefix . $key . ':last_failure', 0);
-            
+
             if (time() - $lastFailureTime < $this->retryTimeout) {
                 $this->logger->error('AsyncCache CIRCUIT_BREAKER: Open state, blocking request', ['key' => $key]);
                 return Create::rejectionFor(new \RuntimeException("Circuit Breaker is OPEN for key: $key"));

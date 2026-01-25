@@ -27,7 +27,7 @@ class SymfonyRateLimiter implements RateLimiterInterface
         }
 
         $limiter = $this->limiters[$key];
-        
+
         // Try to consume 1 token - if not available, we're rate limited
         return !$limiter->consume(1)->isAccepted();
     }
@@ -69,7 +69,7 @@ class SymfonyRateLimiter implements RateLimiterInterface
     public function configure(string $key, int $seconds) : void
     {
         $this->config[$key] = $seconds;
-        
+
         // Create a dedicated factory for this key with specific configuration
         $factory = new RateLimiterFactory([
             'id' => $key,

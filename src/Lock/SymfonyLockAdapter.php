@@ -18,7 +18,7 @@ class SymfonyLockAdapter implements LockInterface
     public function acquire(string $key, float $ttl = 30.0, bool $blocking = false): bool
     {
         $lock = $this->factory->createLock($key, $ttl);
-        
+
         if ($lock->acquire($blocking)) {
             $this->locks[$key] = $lock;
             return true;

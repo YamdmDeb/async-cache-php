@@ -32,7 +32,7 @@ class CacheStorage
     {
         try {
             $cached_item = $this->adapter->get($key);
-            
+
             if ($cached_item === null) {
                 return null;
             }
@@ -52,7 +52,7 @@ class CacheStorage
                 foreach ($cached_item->tagVersions as $tag => $savedVersion) {
                     if (($currentVersions[$tag] ?? null) !== $savedVersion) {
                         $this->logger->debug('AsyncCache TAG_INVALID: tag version mismatch', ['key' => $key, 'tag' => $tag]);
-                        return null; 
+                        return null;
                     }
                 }
             }
@@ -71,7 +71,7 @@ class CacheStorage
                         tagVersions: $cached_item->tagVersions
                     );
                 }
-                
+
                 $this->logger->error('AsyncCache DECOMPRESSION_ERROR: failed to decompress data', ['key' => $key]);
                 return null;
             }
@@ -162,13 +162,13 @@ class CacheStorage
     {
         $keys = array_map(fn($t) => self::TAG_PREFIX . $t, $tags);
         $rawVersions = $this->adapter->getMultiple($keys);
-        
+
         $versions = [];
         foreach ($tags as $tag) {
             $version = $rawVersions[self::TAG_PREFIX . $tag] ?? null;
             if ($version === null && $createMissing) {
                 $version = $this->generateVersion();
-                $this->adapter->set(self::TAG_PREFIX . $tag, $version, 86400 * 30); 
+                $this->adapter->set(self::TAG_PREFIX . $tag, $version, 86400 * 30);
             }
             $versions[$tag] = (string) $version;
         }

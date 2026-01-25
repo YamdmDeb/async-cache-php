@@ -21,7 +21,7 @@ class AsyncCacheExtension extends Extension
         $config = $this->processConfiguration($configuration, $configs);
 
         $definition = new Definition(AsyncCacheManager::class);
-        
+
         $definition->setArguments([
             new Reference(CacheInterface::class),
             null, // rate_limiter (null triggers factory)

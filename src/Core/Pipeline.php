@@ -24,7 +24,7 @@ class Pipeline
     public function send(string $key, callable $promise_factory, CacheOptions $options, callable $destination): PromiseInterface
     {
         $pipeline = array_reverse($this->middlewares);
-        
+
         $next = function (string $k, callable $f, CacheOptions $o) use ($destination) {
             return $destination($k, $f, $o);
         };

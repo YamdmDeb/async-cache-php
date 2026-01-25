@@ -43,7 +43,7 @@ class RetryMiddleware implements MiddlewareInterface
                 }
 
                 $delay = $this->initialDelayMs * pow($this->multiplier, $retries);
-                
+
                 $this->logger->warning('AsyncCache RETRY: Request failed, retrying...', [
                     'key' => $key,
                     'attempt' => $retries + 1,

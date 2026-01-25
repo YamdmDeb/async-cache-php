@@ -46,7 +46,7 @@ class AsyncCacheManager
         ?SerializerInterface $serializer = null
     ) {
         $this->logger = $this->logger ?? new NullLogger();
-        
+
         $this->storage = new CacheStorage($this->cache_adapter, $this->logger, $serializer);
         $this->lock_provider = $this->lock_provider ?? new InMemoryLockAdapter();
 
@@ -91,13 +91,13 @@ class AsyncCacheManager
                 $item = $this->storage->get($key, $options);
                 $currentValue = $item ? (int) $item->data : 0;
                 $newValue = $currentValue + $step;
-                
+
                 $this->storage->set($key, $newValue, $options);
                 $this->lock_provider->release($lockKey);
-                
+
                 return Create::promiseFor($newValue);
             }
-            
+
             return Create::rejectionFor(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
         } catch (\Throwable $e) {
             $this->lock_provider->release($lockKey);
@@ -129,7 +129,7 @@ class AsyncCacheManager
     public function clear() : bool { return $this->cache_adapter->clear(); }
     public function delete(string $key) : bool { return $this->cache_adapter->delete($key); }
     public function getRateLimiter() : RateLimiterInterface { return $this->rate_limiter; }
-    public function clearRateLimiter(?string $key = null) : void { 
+    public function clearRateLimiter(?string $key = null) : void {
         $this->rate_limiter->clear($key);
     }
 }

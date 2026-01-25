@@ -54,10 +54,10 @@ class CacheResolver
             if ($is_fresh && $options->x_fetch_beta > 0 && $cached_item->generationTime > 0) {
                 $rand = mt_rand(1, mt_getrandmax()) / mt_getrandmax();
                 $check = time() - ($cached_item->generationTime * $options->x_fetch_beta * log($rand));
-                
+
                 if ($check > $cached_item->logicalExpireTime) {
                     $this->logger->info('AsyncCache X-FETCH: probabilistic early expiration triggered', [
-                        'key' => $key, 
+                        'key' => $key,
                         'status' => CacheStatus::XFetch->value,
                         'ttl_left' => $cached_item->logicalExpireTime - time()
                     ]);
@@ -108,7 +108,7 @@ class CacheResolver
         if ($options->rate_limit_key && $this->rate_limiter->isLimited($options->rate_limit_key)) {
             $this->lock_provider->release($lock_key);
             $this->dispatcher?->dispatch(new RateLimitExceededEvent($key, $options->rate_limit_key));
-            
+
             if ($options->serve_stale_if_limited && $stale_item !== null) {
                 $this->logger->warning('AsyncCache RATE_LIMIT: serving stale data', ['key' => $key, 'status' => CacheStatus::RateLimited->value]);
                 return Create::promiseFor($stale_item->data);
@@ -117,7 +117,7 @@ class CacheResolver
         }
 
         $this->logger->info('AsyncCache MISS: fetching fresh data', ['key' => $key, 'status' => CacheStatus::Miss->value]);
-        
+
         if ($options->rate_limit_key) {
             $this->rate_limiter->recordExecution($options->rate_limit_key);
         }

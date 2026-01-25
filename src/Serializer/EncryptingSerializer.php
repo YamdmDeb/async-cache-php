@@ -26,7 +26,7 @@ class EncryptingSerializer implements SerializerInterface
     {
         $plaintext = $this->serializer->serialize($data);
         $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length(self::CIPHER));
-        
+
         $ciphertext = openssl_encrypt(
             $plaintext,
             self::CIPHER,

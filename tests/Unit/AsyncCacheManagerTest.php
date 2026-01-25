@@ -7,7 +7,6 @@ use Fyennyi\AsyncCache\CacheOptions;
 use Fyennyi\AsyncCache\Exception\RateLimitException;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use GuzzleHttp\Promise\Create;
-use GuzzleHttp\Promise\PromiseInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\SimpleCache\CacheInterface;
