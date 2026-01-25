@@ -4,6 +4,7 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/fyennyi/async-cache-php.svg?label=Downloads&logo=packagist)](https://packagist.org/packages/fyennyi/async-cache-php)
 [![License](https://img.shields.io/packagist/l/fyennyi/async-cache-php.svg?label=Licence&logo=open-source-initiative)](https://packagist.org/packages/fyennyi/async-cache-php)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Fyennyi/async-cache-php/phpunit.yml?label=Tests&logo=github)](https://github.com/Fyennyi/async-cache-php/actions/workflows/phpunit.yml)
+[![Static Analysis](https://img.shields.io/github/actions/workflow/status/Fyennyi/async-cache-php/phpstan.yml?label=PHPStan&logo=github)](https://github.com/Fyennyi/async-cache-php/actions/workflows/phpstan.yml)
 [![Test Coverage](https://img.shields.io/codecov/c/github/Fyennyi/async-cache-php?label=Test%20Coverage&logo=codecov)](https://app.codecov.io/gh/Fyennyi/async-cache-php)
 
 An asynchronous caching abstraction layer for PHP with built-in rate limiting and stale-while-revalidate support. This library is designed to wrap promise-based operations (like Guzzle Promises) to provide robust caching strategies suitable for high-load or rate-limited API clients.
