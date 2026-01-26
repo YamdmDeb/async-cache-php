@@ -17,12 +17,10 @@ use Fyennyi\AsyncCache\Middleware\SourceFetchMiddleware;
 use Fyennyi\AsyncCache\Middleware\StaleOnErrorMiddleware;
 use Fyennyi\AsyncCache\Serializer\SerializerInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
-use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
-use React\Promise\PromiseInterface as ReactPromiseInterface;
 use Symfony\Component\RateLimiter\LimiterInterface;
 
 /**
@@ -78,10 +76,10 @@ class AsyncCacheManager
      * @param  CacheOptions  $options          Caching configuration
      * @return Future                          Native future representing the result
      */
-    public function wrapFuture(string $key, callable $promise_factory, CacheOptions $options) : Future
+    public function wrap(string $key, callable $promise_factory, CacheOptions $options) : Future
     {
         $context = new CacheContext($key, $promise_factory, $options);
-
+        
         // Execute the pipeline. The result is a Future from the last middleware.
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             $res = ($ctx->promiseFactory)();
@@ -105,37 +103,7 @@ class AsyncCacheManager
     }
 
     /**
-     * Returns a Guzzle Promise for industry compatibility
-     *
-     * @template T
-     *
-     * @param  string        $key              Cache key identifier
-     * @param  callable      $promise_factory  Function that returns a value or promise
-     * @param  CacheOptions  $options          Caching configuration
-     * @return GuzzlePromiseInterface          Promise that resolves to the result
-     */
-    public function wrap(string $key, callable $promise_factory, CacheOptions $options) : GuzzlePromiseInterface
-    {
-        return PromiseAdapter::toGuzzle($this->wrapFuture($key, $promise_factory, $options));
-    }
-
-    /**
-     * Returns a native ReactPHP Promise for high performance
-     *
-     * @template T
-     *
-     * @param  string        $key              Cache key identifier
-     * @param  callable      $promise_factory  Function that returns a value or promise
-     * @param  CacheOptions  $options          Caching configuration
-     * @return ReactPromiseInterface           React promise for high-perf scenarios
-     */
-    public function wrapReact(string $key, callable $promise_factory, CacheOptions $options) : ReactPromiseInterface
-    {
-        return PromiseAdapter::toReact($this->wrapFuture($key, $promise_factory, $options));
-    }
-
-    /**
-     * Returns the result directly using PHP 8.1+ Fibers
+     * Returns the result directly using synchronous wait (via Loop if needed)
      *
      * @template T
      *
@@ -148,7 +116,7 @@ class AsyncCacheManager
      */
     public function get(string $key, callable $promise_factory, CacheOptions $options) : mixed
     {
-        return $this->wrapFuture($key, $promise_factory, $options)->wait();
+        return $this->wrap($key, $promise_factory, $options)->wait();
     }
 
     /**
@@ -157,9 +125,9 @@ class AsyncCacheManager
      * @param  string             $key      The key to increment
      * @param  int                $step     Increment step value
      * @param  CacheOptions|null  $options  Optional caching options
-     * @return GuzzlePromiseInterface       Promise resolving to the new value
+     * @return Future                       Future resolving to the new value
      */
-    public function increment(string $key, int $step = 1, ?CacheOptions $options = null) : GuzzlePromiseInterface
+    public function increment(string $key, int $step = 1, ?CacheOptions $options = null) : Future
     {
         $options = $options ?? new CacheOptions();
         $lockKey = 'lock:counter:' . $key;
@@ -196,7 +164,7 @@ class AsyncCacheManager
 
         $attempt();
 
-        return PromiseAdapter::toGuzzle($deferred->future());
+        return $deferred->future();
     }
 
     /**
@@ -205,9 +173,9 @@ class AsyncCacheManager
      * @param  string             $key      The key to decrement
      * @param  int                $step     Decrement step value
      * @param  CacheOptions|null  $options  Optional caching options
-     * @return GuzzlePromiseInterface       Promise resolving to the new value
+     * @return Future                       Future resolving to the new value
      */
-    public function decrement(string $key, int $step = 1, ?CacheOptions $options = null) : GuzzlePromiseInterface
+    public function decrement(string $key, int $step = 1, ?CacheOptions $options = null) : Future
     {
         return $this->increment($key, -$step, $options);
     }
