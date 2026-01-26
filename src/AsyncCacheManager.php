@@ -2,17 +2,20 @@
 
 namespace Fyennyi\AsyncCache;
 
-use Fyennyi\AsyncCache\Core\CacheResolver;
+use Fyennyi\AsyncCache\Bridge\GuzzlePromiseAdapter;
+use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Pipeline;
 use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Fyennyi\AsyncCache\Lock\InMemoryLockAdapter;
 use Fyennyi\AsyncCache\Lock\LockInterface;
+use Fyennyi\AsyncCache\Middleware\AsyncLockMiddleware;
+use Fyennyi\AsyncCache\Middleware\CacheLookupMiddleware;
 use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
+use Fyennyi\AsyncCache\Middleware\SourceFetchMiddleware;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use Fyennyi\AsyncCache\Serializer\SerializerInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
-use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
@@ -21,20 +24,9 @@ use Psr\SimpleCache\CacheInterface;
 
 class AsyncCacheManager
 {
-    private CacheResolver $resolver;
     private Pipeline $pipeline;
     private CacheStorage $storage;
 
-    /**
-     * @param  CacheInterface  $cache_adapter  The PSR-16 cache implementation
-     * @param  RateLimiterInterface|null  $rate_limiter  The rate limiter implementation
-     * @param  RateLimiterType  $rate_limiter_type  Type of rate limiter to use
-     * @param  LoggerInterface|null  $logger  The PSR-3 logger implementation
-     * @param  LockInterface|null  $lock_provider  The distributed lock provider
-     * @param  MiddlewareInterface[]  $middlewares  Optional middleware stack
-     * @param  EventDispatcherInterface|null  $dispatcher  The PSR-14 event dispatcher
-     * @param  SerializerInterface|null  $serializer  The custom serializer
-     */
     public function __construct(
         private CacheInterface $cache_adapter,
         private ?RateLimiterInterface $rate_limiter = null,
@@ -46,7 +38,6 @@ class AsyncCacheManager
         ?SerializerInterface $serializer = null
     ) {
         $this->logger = $this->logger ?? new NullLogger();
-
         $this->storage = new CacheStorage($this->cache_adapter, $this->logger, $serializer);
         $this->lock_provider = $this->lock_provider ?? new InMemoryLockAdapter();
 
@@ -54,13 +45,17 @@ class AsyncCacheManager
             $this->rate_limiter = RateLimiterFactory::create($this->rate_limiter_type, $this->cache_adapter);
         }
 
-        $this->resolver = new CacheResolver(
-            $this->storage,
-            $this->rate_limiter,
-            $this->lock_provider,
-            $this->logger,
-            $this->dispatcher
-        );
+        // Automatic async synchronization
+        GuzzlePromiseAdapter::registerLoop();
+
+        // Build default pipeline if empty
+        if (empty($middlewares)) {
+            $middlewares = [
+                new CacheLookupMiddleware($this->storage, $this->logger, $this->dispatcher),
+                new AsyncLockMiddleware($this->lock_provider, $this->storage, $this->logger, $this->dispatcher),
+                new SourceFetchMiddleware($this->storage, $this->logger, $this->dispatcher)
+            ];
+        }
 
         $this->pipeline = new Pipeline($middlewares);
     }
@@ -70,8 +65,11 @@ class AsyncCacheManager
      */
     public function wrap(string $key, callable $promise_factory, CacheOptions $options) : PromiseInterface
     {
-        return $this->pipeline->send($key, $promise_factory, $options, function ($k, $f, $o) {
-            return $this->resolver->resolve($k, $f, $o);
+        $context = new CacheContext($key, $promise_factory, $options);
+        
+        return $this->pipeline->send($context, function (CacheContext $ctx) {
+            // This destination is reached only if all middlewares pass and none return early
+            return GuzzlePromiseAdapter::wrap(($ctx->promiseFactory)());
         });
     }
 
