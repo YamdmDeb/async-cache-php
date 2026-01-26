@@ -2,15 +2,15 @@
 
 namespace Fyennyi\AsyncCache\Middleware;
 
-use Fyennyi\AsyncCache\Bridge\GuzzlePromiseAdapter;
+use Fyennyi\AsyncCache\Bridge\PromiseBridge;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Event\CacheStatusEvent;
 use Fyennyi\AsyncCache\Event\CacheMissEvent;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
-use GuzzleHttp\Promise\PromiseInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
+use React\Promise\PromiseInterface;
 
 /**
  * The final middleware that actually calls the source and populates the cache
@@ -29,7 +29,7 @@ class SourceFetchMiddleware implements MiddlewareInterface
         $this->dispatcher?->dispatch(new CacheMissEvent($context->key));
         
         $fetchStartTime = microtime(true);
-        $promise = GuzzlePromiseAdapter::wrap(($context->promiseFactory)());
+        $promise = PromiseBridge::toReact(($context->promiseFactory)());
 
         return $promise->then(
             function ($data) use ($context, $fetchStartTime) {
