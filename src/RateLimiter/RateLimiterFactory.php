@@ -20,7 +20,7 @@ class RateLimiterFactory
     public static function create(RateLimiterType $type, CacheInterface $cache_adapter) : RateLimiterInterface
     {
         return match($type) {
-            RateLimiterType::TokenBucket => new TokenBucketRateLimiter($cache_adapter),
+            RateLimiterType::TokenBucket => new TokenBucketRateLimiter(),
             RateLimiterType::InMemory => new InMemoryRateLimiter(),
             RateLimiterType::Symfony => throw new \InvalidArgumentException("Symfony Rate Limiter requires explicit configuration"),
             default => new InMemoryRateLimiter(),
