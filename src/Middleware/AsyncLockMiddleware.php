@@ -16,10 +16,16 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Ensures thread-safety for cache refreshing using non-blocking locks and native timers
+ * Synchronization middleware that prevents race conditions during cache population
  */
 class AsyncLockMiddleware implements MiddlewareInterface
 {
+    /**
+     * @param  LockInterface                  $lock_provider  The lock management implementation
+     * @param  CacheStorage                   $storage        The cache interaction layer
+     * @param  LoggerInterface                $logger         Logging implementation
+     * @param  EventDispatcherInterface|null  $dispatcher     Event dispatcher for telemetry
+     */
     public function __construct(
         private LockInterface $lock_provider,
         private CacheStorage $storage,
@@ -28,7 +34,12 @@ class AsyncLockMiddleware implements MiddlewareInterface
     ) {
     }
 
-    public function handle(CacheContext $context, callable $next): Future
+    /**
+     * @param  CacheContext  $context  The resolution state
+     * @param  callable      $next     Next handler in the chain
+     * @return Future                  Future resolving to fresh or stale data
+     */
+    public function handle(CacheContext $context, callable $next) : Future
     {
         $lock_key = 'lock:' . $context->key;
 
@@ -44,9 +55,11 @@ class AsyncLockMiddleware implements MiddlewareInterface
             return $deferred->future();
         }
 
+        $this->logger->debug('AsyncCache LOCK_BUSY: waiting for lock asynchronously', ['key' => $context->key]);
+
         $startTime = microtime(true);
         $timeout = 10.0;
-        
+
         $attempt = function () use (&$attempt, $context, $next, $lock_key, $startTime, $timeout) {
             if ($this->lock_provider->acquire($lock_key, 30.0, false)) {
                 $cached_item = $this->storage->get($context->key, $context->options);
@@ -64,14 +77,21 @@ class AsyncLockMiddleware implements MiddlewareInterface
                 throw new \RuntimeException("Could not acquire lock for key: {$context->key} (Timeout)");
             }
 
-            // Using the new Timer directly
             return Timer::delay(0.05)->then($attempt);
         };
 
         return $attempt();
     }
 
-    private function handleWithLock(CacheContext $context, callable $next, string $lock_key): Future
+    /**
+     * Helper to execute next middleware and ensure lock release
+     *
+     * @param  CacheContext  $context   The resolution state
+     * @param  callable      $next      Next handler in the chain
+     * @param  string        $lock_key  Key of the acquired lock
+     * @return Future                   Result future
+     */
+    private function handleWithLock(CacheContext $context, callable $next, string $lock_key) : Future
     {
         return $next($context)->then(
             function ($data) use ($lock_key) {

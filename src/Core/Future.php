@@ -8,20 +8,32 @@ use React\Promise\PromiseInterface as ReactPromiseInterface;
 use React\Promise\Deferred as ReactDeferred;
 
 /**
- * The core Future object of AsyncCache.
+ * The internal "currency" of the library representing a future value
  */
 class Future
 {
+    /** @var array<callable> */
     private array $handlers = [];
     private mixed $result = null;
     private bool $resolved = false;
     private bool $rejected = false;
 
+    /**
+     * @param callable|null $waitFn Optional function to drive resolution when wait() is called
+     */
     public function __construct(private $waitFn = null) {}
 
-    public function then(callable $onFulfilled = null, callable $onRejected = null): self
+    /**
+     * Attaches callbacks for resolution or rejection
+     *
+     * @param  callable|null  $onFulfilled  Success handler
+     * @param  callable|null  $onRejected   Failure handler
+     * @return self                         New future for chaining
+     */
+    public function then(callable $onFulfilled = null, callable $onRejected = null) : self
     {
         $next = new self($this->waitFn);
+
         $handler = function () use ($next, $onFulfilled, $onRejected) {
             try {
                 if ($this->rejected) {
@@ -53,34 +65,58 @@ class Future
         return $next;
     }
 
-    public function resolve(mixed $value): void
+    /**
+     * Successfully resolves the future with a value
+     *
+     * @param  mixed  $value  The resolution value
+     * @return void
+     */
+    public function resolve(mixed $value) : void
     {
-        if ($this->resolved || $this->rejected) return;
+        if ($this->resolved || $this->rejected) {
+            return;
+        }
         $this->result = $value;
         $this->resolved = true;
         $this->fire();
     }
 
-    public function reject(mixed $reason): void
+    /**
+     * Rejects the future with a reason
+     *
+     * @param  mixed  $reason  The rejection reason (usually Throwable)
+     * @return void
+     */
+    public function reject(mixed $reason) : void
     {
-        if ($this->resolved || $this->rejected) return;
+        if ($this->resolved || $this->rejected) {
+            return;
+        }
         $this->result = $reason;
         $this->rejected = true;
         $this->fire();
     }
 
+    /**
+     * Synchronously waits for the future to resolve
+     *
+     * @return mixed  The resolved value
+     * @throws \Throwable If the future was rejected
+     */
     public function wait()
     {
-        if (!$this->resolved && !$this->rejected && $this->waitFn) {
+        if (! $this->resolved && ! $this->rejected && $this->waitFn) {
             ($this->waitFn)();
         }
         return $this->result;
     }
 
     /**
-     * Converts to Guzzle Promise
+     * Converts the future to a Guzzle Promise
+     *
+     * @return GuzzlePromiseInterface
      */
-    public function toGuzzle(): GuzzlePromiseInterface
+    public function toGuzzle() : GuzzlePromiseInterface
     {
         $guzzle = new GuzzlePromise(fn() => $this->wait());
         $this->then(
@@ -91,9 +127,11 @@ class Future
     }
 
     /**
-     * Converts to ReactPHP Promise
+     * Converts the future to a ReactPHP Promise
+     *
+     * @return ReactPromiseInterface
      */
-    public function toReact(): ReactPromiseInterface
+    public function toReact() : ReactPromiseInterface
     {
         $deferred = new ReactDeferred();
         $this->then(
@@ -103,9 +141,14 @@ class Future
         return $deferred->promise();
     }
 
-    private function fire(): void
+    /**
+     * Triggers all attached handlers
+     */
+    private function fire() : void
     {
-        foreach ($this->handlers as $handler) { $handler(); }
+        foreach ($this->handlers as $handler) {
+            $handler();
+        }
         $this->handlers = [];
     }
 }

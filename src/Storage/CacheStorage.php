@@ -17,6 +17,11 @@ class CacheStorage
     private const TAG_PREFIX = 'tag_v:';
     private SerializerInterface $serializer;
 
+    /**
+     * @param  CacheInterface            $adapter     The underlying PSR-16 cache implementation
+     * @param  LoggerInterface           $logger      Logger for reporting errors and debug info
+     * @param  SerializerInterface|null  $serializer  Custom serializer implementation
+     */
     public function __construct(
         private CacheInterface $adapter,
         private LoggerInterface $logger,
@@ -26,9 +31,15 @@ class CacheStorage
     }
 
     /**
-     * Retrieves an item from the cache, handles fail-safe, decompression and tag validation
+     * Retrieves an item from the cache and performs integrity checks
+     *
+     * @param  string        $key      The cache key to retrieve
+     * @param  CacheOptions  $options  Options for fail-safe and tag validation
+     * @return CachedItem|null         The cached item or null if not found/invalid
+     *
+     * @throws \Throwable If adapter fails and fail_safe is disabled
      */
-    public function get(string $key, CacheOptions $options): ?CachedItem
+    public function get(string $key, CacheOptions $options) : ?CachedItem
     {
         try {
             $cached_item = $this->adapter->get($key);
@@ -42,12 +53,12 @@ class CacheStorage
                 $cached_item = new CachedItem($cached_item['d'], $cached_item['e']);
             }
 
-            if (!$cached_item instanceof CachedItem) {
+            if (! $cached_item instanceof CachedItem) {
                 return null;
             }
 
             // Tag Validation
-            if (!empty($cached_item->tagVersions)) {
+            if (! empty($cached_item->tagVersions)) {
                 $currentVersions = $this->getTagVersions(array_keys($cached_item->tagVersions));
                 foreach ($cached_item->tagVersions as $tag => $savedVersion) {
                     if (($currentVersions[$tag] ?? null) !== $savedVersion) {
@@ -91,9 +102,17 @@ class CacheStorage
     }
 
     /**
-     * Stores an item in the cache, handles compression, fail-safe and tags
+     * Stores an item in the cache with metadata and tags
+     *
+     * @param  string        $key             The cache key
+     * @param  mixed         $data            The value to store
+     * @param  CacheOptions  $options         Configuration for TTL and compression
+     * @param  float         $generationTime  How long it took to generate the data
+     * @return bool                           True on success, false on failure
+     *
+     * @throws \Throwable If adapter fails and fail_safe is disabled
      */
-    public function set(string $key, mixed $data, CacheOptions $options, float $generationTime = 0.0): bool
+    public function set(string $key, mixed $data, CacheOptions $options, float $generationTime = 0.0) : bool
     {
         try {
             $logical_ttl = $options->ttl;
@@ -102,7 +121,7 @@ class CacheStorage
 
             // Fetch current tag versions
             $tagVersions = [];
-            if (!empty($options->tags)) {
+            if (! empty($options->tags)) {
                 $tagVersions = $this->getTagVersions($options->tags, true);
             }
 
@@ -145,9 +164,12 @@ class CacheStorage
     }
 
     /**
-     * Invalidates specific tags by changing their versions
+     * Invalidates specific tags by rotating their versions
+     *
+     * @param  array  $tags  List of tags to invalidate
+     * @return void
      */
-    public function invalidateTags(array $tags): void
+    public function invalidateTags(array $tags) : void
     {
         foreach ($tags as $tag) {
             $this->adapter->set(self::TAG_PREFIX . $tag, $this->generateVersion());
@@ -157,8 +179,12 @@ class CacheStorage
 
     /**
      * Fetches current versions for a set of tags
+     *
+     * @param  array  $tags           List of tags to fetch
+     * @param  bool   $createMissing  Whether to initialize missing tags
+     * @return array                  Map of tag => version
      */
-    private function getTagVersions(array $tags, bool $createMissing = false): array
+    private function getTagVersions(array $tags, bool $createMissing = false) : array
     {
         $keys = array_map(fn($t) => self::TAG_PREFIX . $t, $tags);
         $rawVersions = $this->adapter->getMultiple($keys);
@@ -176,12 +202,44 @@ class CacheStorage
         return $versions;
     }
 
-    private function generateVersion(): string
+    /**
+     * Generates a unique version string for tags
+     *
+     * @return string
+     */
+    private function generateVersion() : string
     {
         return uniqid('', true);
     }
 
-    public function delete(string $key): bool { return $this->adapter->delete($key); }
-    public function clear(): bool { return $this->adapter->clear(); }
-    public function getAdapter(): CacheInterface { return $this->adapter; }
+    /**
+     * Deletes an item from the adapter
+     *
+     * @param  string  $key  Item key
+     * @return bool
+     */
+    public function delete(string $key) : bool
+    {
+        return $this->adapter->delete($key);
+    }
+
+    /**
+     * Clears the entire storage adapter
+     *
+     * @return bool
+     */
+    public function clear() : bool
+    {
+        return $this->adapter->clear();
+    }
+
+    /**
+     * Returns the underlying PSR-16 adapter
+     *
+     * @return CacheInterface
+     */
+    public function getAdapter() : CacheInterface
+    {
+        return $this->adapter;
+    }
 }

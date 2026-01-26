@@ -2,53 +2,53 @@
 
 namespace Fyennyi\AsyncCache\RateLimiter;
 
+/**
+ * Simple in-memory rate limiter for single-process environments
+ */
 class InMemoryRateLimiter implements RateLimiterInterface
 {
-    /** @var array<string, float> */
-    private array $last_execution_time = [];
+    /** @var array<string, int> Map of key => request_count */
+    private array $hits = [];
 
-    /** @var array<string, int> */
-    private array $intervals = [];
+    /**
+     * @param  int  $maxHits  Maximum allowed requests (not time-bound in this simple version)
+     */
+    public function __construct(private int $maxHits = 100) {}
 
-    public function configure(string $key, int $seconds) : void
-    {
-        $this->intervals[$key] = $seconds;
-    }
-
+    /**
+     * Checks if limited
+     *
+     * @param  string  $key  Key to check
+     * @return bool
+     */
     public function isLimited(string $key) : bool
     {
-        if (! isset($this->intervals[$key])) {
-            return false;
-        }
-
-        $interval = $this->intervals[$key];
-
-        // If interval is 0, we consider it disabled (unlimited)
-        if ($interval === 0) {
-            return false;
-        }
-
-        if (! isset($this->last_execution_time[$key])) {
-            return false;
-        }
-
-        $elapsed = microtime(true) - $this->last_execution_time[$key];
-
-        return $elapsed < $interval;
+        return ($this->hits[$key] ?? 0) >= $this->maxHits;
     }
 
+    /**
+     * Increments hit count
+     *
+     * @param  string  $key  Key to record
+     * @return void
+     */
     public function recordExecution(string $key) : void
     {
-        $this->last_execution_time[$key] = microtime(true);
+        $this->hits[$key] = ($this->hits[$key] ?? 0) + 1;
     }
 
+    /**
+     * Clears specific or all hits
+     *
+     * @param  string|null  $key  Optional key
+     * @return void
+     */
     public function clear(?string $key = null) : void
     {
-        if ($key === null) {
-            $this->last_execution_time = [];
-            $this->intervals = [];
+        if ($key) {
+            unset($this->hits[$key]);
         } else {
-            unset($this->last_execution_time[$key], $this->intervals[$key]);
+            $this->hits = [];
         }
     }
 }

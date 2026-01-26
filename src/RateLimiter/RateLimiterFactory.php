@@ -6,41 +6,24 @@ use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Psr\SimpleCache\CacheInterface;
 
 /**
- * Factory for creating rate limiters
+ * Factory for creating rate limiter instances based on configuration
  */
 class RateLimiterFactory
 {
     /**
-     * Create a rate limiter instance
+     * Creates a rate limiter instance
      *
-     * @param  RateLimiterType  $type  Type of rate limiter
-     * @param  CacheInterface|null  $cache  Optional cache for persistent storage
-     * @return RateLimiterInterface
+     * @param  RateLimiterType  $type           The strategy type
+     * @param  CacheInterface   $cache_adapter  Adapter for persistence (if needed)
+     * @return RateLimiterInterface             The created limiter
      */
-    public static function create(RateLimiterType $type = RateLimiterType::InMemory, ?CacheInterface $cache = null) : RateLimiterInterface
+    public static function create(RateLimiterType $type, CacheInterface $cache_adapter) : RateLimiterInterface
     {
-        return match ($type) {
-            RateLimiterType::Symfony => new SymfonyRateLimiter(),
+        return match($type) {
+            RateLimiterType::TokenBucket => new TokenBucketRateLimiter($cache_adapter),
             RateLimiterType::InMemory => new InMemoryRateLimiter(),
-            RateLimiterType::TokenBucket => new TokenBucketRateLimiter(),
-            RateLimiterType::Auto => self::createBest($cache),
+            RateLimiterType::Symfony => throw new \InvalidArgumentException("Symfony Rate Limiter requires explicit configuration"),
+            default => new InMemoryRateLimiter(),
         };
-    }
-
-    /**
-     * Create the best available rate limiter
-     * 
-     * @param  CacheInterface|null  $cache  Optional cache for persistent storage
-     * @return RateLimiterInterface
-     */
-    public static function createBest(?CacheInterface $cache = null) : RateLimiterInterface
-    {
-        // Try Symfony first (most robust)
-        if (class_exists('\Symfony\Component\RateLimiter\RateLimiterFactory')) {
-            return new SymfonyRateLimiter();
-        }
-
-        // Fallback to in-memory
-        return new InMemoryRateLimiter();
     }
 }

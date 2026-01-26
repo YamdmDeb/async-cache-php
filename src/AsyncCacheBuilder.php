@@ -6,7 +6,6 @@ use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Fyennyi\AsyncCache\Lock\LockInterface;
 use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
-use Fyennyi\AsyncCache\Scheduler\SchedulerInterface;
 use Fyennyi\AsyncCache\Serializer\SerializerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
@@ -25,66 +24,115 @@ class AsyncCacheBuilder
     private array $middlewares = [];
     private ?EventDispatcherInterface $dispatcher = null;
     private ?SerializerInterface $serializer = null;
-    private ?SchedulerInterface $scheduler = null;
 
+    /**
+     * @param  CacheInterface  $cacheAdapter  The underlying PSR-16 cache implementation
+     */
     public function __construct(private CacheInterface $cacheAdapter)
     {
     }
 
-    public static function create(CacheInterface $cacheAdapter): self
+    /**
+     * Entry point for the fluent builder
+     *
+     * @param  CacheInterface  $cacheAdapter  The underlying cache storage
+     * @return self                           New builder instance
+     */
+    public static function create(CacheInterface $cacheAdapter) : self
     {
         return new self($cacheAdapter);
     }
 
-    public function withRateLimiter(RateLimiterInterface $rateLimiter): self
+    /**
+     * Sets a custom rate limiter implementation
+     *
+     * @param  RateLimiterInterface  $rateLimiter  The implementation to use
+     * @return self                                Current builder instance
+     */
+    public function withRateLimiter(RateLimiterInterface $rateLimiter) : self
     {
         $this->rateLimiter = $rateLimiter;
         return $this;
     }
 
-    public function withRateLimiterType(RateLimiterType $type): self
+    /**
+     * Configures the automatic rate limiter type
+     *
+     * @param  RateLimiterType  $type  Enum identifier for the rate limiter
+     * @return self                    Current builder instance
+     */
+    public function withRateLimiterType(RateLimiterType $type) : self
     {
         $this->rateLimiterType = $type;
         return $this;
     }
 
-    public function withLogger(LoggerInterface $logger): self
+    /**
+     * Sets the PSR-3 logger
+     *
+     * @param  LoggerInterface  $logger  Logger implementation
+     * @return self                      Current builder instance
+     */
+    public function withLogger(LoggerInterface $logger) : self
     {
         $this->logger = $logger;
         return $this;
     }
 
-    public function withLockProvider(LockInterface $lockProvider): self
+    /**
+     * Configures the distributed lock provider
+     *
+     * @param  LockInterface  $lockProvider  Lock implementation
+     * @return self                          Current builder instance
+     */
+    public function withLockProvider(LockInterface $lockProvider) : self
     {
         $this->lockProvider = $lockProvider;
         return $this;
     }
 
-    public function withMiddleware(MiddlewareInterface $middleware): self
+    /**
+     * Appends a custom middleware to the pipeline
+     *
+     * @param  MiddlewareInterface  $middleware  Middleware implementation
+     * @return self                              Current builder instance
+     */
+    public function withMiddleware(MiddlewareInterface $middleware) : self
     {
         $this->middlewares[] = $middleware;
         return $this;
     }
 
-    public function withEventDispatcher(EventDispatcherInterface $dispatcher): self
+    /**
+     * Sets the PSR-14 event dispatcher
+     *
+     * @param  EventDispatcherInterface  $dispatcher  Dispatcher implementation
+     * @return self                                    Current builder instance
+     */
+    public function withEventDispatcher(EventDispatcherInterface $dispatcher) : self
     {
         $this->dispatcher = $dispatcher;
         return $this;
     }
 
-    public function withSerializer(SerializerInterface $serializer): self
+    /**
+     * Sets a custom serializer for data storage
+     *
+     * @param  SerializerInterface  $serializer  Serializer implementation
+     * @return self                              Current builder instance
+     */
+    public function withSerializer(SerializerInterface $serializer) : self
     {
         $this->serializer = $serializer;
         return $this;
     }
 
-    public function withScheduler(SchedulerInterface $scheduler): self
-    {
-        $this->scheduler = $scheduler;
-        return $this;
-    }
-
-    public function build(): AsyncCacheManager
+    /**
+     * Finalizes the configuration and creates the AsyncCacheManager
+     *
+     * @return AsyncCacheManager  Fully configured manager instance
+     */
+    public function build() : AsyncCacheManager
     {
         return new AsyncCacheManager(
             $this->cacheAdapter,
@@ -94,8 +142,7 @@ class AsyncCacheBuilder
             $this->lockProvider,
             $this->middlewares,
             $this->dispatcher,
-            $this->serializer,
-            $this->scheduler
+            $this->serializer
         );
     }
 }

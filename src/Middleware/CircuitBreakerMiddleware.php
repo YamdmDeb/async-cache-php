@@ -18,6 +18,13 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
     private const STATE_OPEN = 'open';
     private const STATE_HALF_OPEN = 'half_open';
 
+    /**
+     * @param  CacheInterface       $storage           Storage for breaker state and failure counts
+     * @param  int                  $failureThreshold  Number of failures before opening the circuit
+     * @param  int                  $retryTimeout      Timeout in seconds before moving to half-open state
+     * @param  string               $prefix            Cache key prefix for breaker state
+     * @param  LoggerInterface|null $logger            Logger for state changes
+     */
     public function __construct(
         private CacheInterface $storage,
         private int $failureThreshold = 5,
@@ -28,7 +35,12 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
         $this->logger = $this->logger ?? new NullLogger();
     }
 
-    public function handle(CacheContext $context, callable $next): PromiseInterface
+    /**
+     * @param  CacheContext  $context  The resolution state
+     * @param  callable      $next     Next handler in the chain
+     * @return PromiseInterface        Future result or immediate rejection
+     */
+    public function handle(CacheContext $context, callable $next) : PromiseInterface
     {
         $stateKey = $this->prefix . $context->key . ':state';
         $failureKey = $this->prefix . $context->key . ':failures';
@@ -61,14 +73,30 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
         );
     }
 
-    private function onSuccess(string $stateKey, string $failureKey, string $key): void
+    /**
+     * Handles successful request completion
+     *
+     * @param  string  $stateKey    Storage key for state
+     * @param  string  $failureKey  Storage key for failure count
+     * @param  string  $key         Resource identifier
+     * @return void
+     */
+    private function onSuccess(string $stateKey, string $failureKey, string $key) : void
     {
         $this->storage->set($stateKey, self::STATE_CLOSED);
         $this->storage->set($failureKey, 0);
         $this->logger->info('AsyncCache CIRCUIT_BREAKER: Success, circuit closed', ['key' => $key]);
     }
 
-    private function onFailure(string $stateKey, string $failureKey, string $key): void
+    /**
+     * Handles request failure
+     *
+     * @param  string  $stateKey    Storage key for state
+     * @param  string  $failureKey  Storage key for failure count
+     * @param  string  $key         Resource identifier
+     * @return void
+     */
+    private function onFailure(string $stateKey, string $failureKey, string $key) : void
     {
         $failures = (int) $this->storage->get($failureKey, 0) + 1;
         $this->storage->set($failureKey, $failures);

@@ -5,17 +5,20 @@ namespace Fyennyi\AsyncCache\Core;
 use React\Promise\Timer\resolve as reactDelay;
 
 /**
- * High-level timer for non-blocking delays
+ * High-level timer for non-blocking asynchronous delays
  */
 class Timer
 {
     /**
-     * Returns a Future that resolves after the specified delay using ReactPHP
+     * Creates a non-blocking delay that resolves into a Future
+     *
+     * @param  float  $seconds  Seconds to wait
+     * @return Future           Future that resolves when time passes
      */
-    public static function delay(float $seconds): Future
+    public static function delay(float $seconds) : Future
     {
         $deferred = new Deferred(function() {
-            // Auto-drive the loop if wait() is called
+            // Drive the loop if someone calls wait() on this timer
             if (class_exists('React\EventLoop\Loop')) {
                 \React\EventLoop\Loop::run();
             }
@@ -24,7 +27,7 @@ class Timer
         if (class_exists('React\Promise\Timer\resolve')) {
             reactDelay($seconds)->then(fn() => $deferred->resolve(null));
         } else {
-            // Fallback for non-async environments (safety only)
+            // Fallback for extreme cases (should not happen in proper install)
             usleep((int)($seconds * 1000000));
             $deferred->resolve(null);
         }

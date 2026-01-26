@@ -3,15 +3,17 @@
 namespace Fyennyi\AsyncCache\Serializer;
 
 /**
- * Decorator that encrypts data after serialization and decrypts before unserialization
+ * Security decorator that encrypts data after serialization and decrypts before unserialization
  */
 class EncryptingSerializer implements SerializerInterface
 {
     private const CIPHER = 'aes-256-gcm';
 
     /**
-     * @param SerializerInterface $serializer The inner serializer to wrap
-     * @param string $key Secret encryption key (must be 32 bytes for aes-256)
+     * @param  SerializerInterface  $serializer  The inner serializer to wrap
+     * @param  string               $key         Secret encryption key (exactly 32 bytes for AES-256)
+     *
+     * @throws \InvalidArgumentException If the key length is incorrect
      */
     public function __construct(
         private SerializerInterface $serializer,
@@ -22,7 +24,15 @@ class EncryptingSerializer implements SerializerInterface
         }
     }
 
-    public function serialize(mixed $data): string
+    /**
+     * Serializes and encrypts data
+     *
+     * @param  mixed  $data  Data to process
+     * @return string        Base64-encoded encrypted package (IV + TAG + Ciphertext)
+     *
+     * @throws \RuntimeException If encryption fails
+     */
+    public function serialize(mixed $data) : string
     {
         $plaintext = $this->serializer->serialize($data);
         $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length(self::CIPHER));
@@ -44,7 +54,15 @@ class EncryptingSerializer implements SerializerInterface
         return base64_encode($iv . $tag . $ciphertext);
     }
 
-    public function unserialize(string $data): mixed
+    /**
+     * Decrypts and unserializes data
+     *
+     * @param  string  $data  Base64-encoded encrypted package
+     * @return mixed          Original reconstructed data
+     *
+     * @throws \RuntimeException If decryption fails or data is corrupted
+     */
+    public function unserialize(string $data) : mixed
     {
         $decoded = base64_decode($data, true);
         if ($decoded === false) {

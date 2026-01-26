@@ -17,7 +17,14 @@ class ChainCacheAdapter implements CacheInterface
     ) {
     }
 
-    public function get(string $key, mixed $default = null): mixed
+    /**
+     * Retrieves an item from the first adapter that has it
+     *
+     * @param  string  $key      Cache key
+     * @param  mixed   $default  Default value if not found in any layer
+     * @return mixed             Found value or default
+     */
+    public function get(string $key, mixed $default = null) : mixed
     {
         foreach ($this->adapters as $index => $adapter) {
             $value = $adapter->get($key);
@@ -33,7 +40,15 @@ class ChainCacheAdapter implements CacheInterface
         return $default;
     }
 
-    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+    /**
+     * Stores an item across all cache layers
+     *
+     * @param  string                  $key    Cache key
+     * @param  mixed                   $value  Value to store
+     * @param  null|int|\DateInterval  $ttl    Optional TTL
+     * @return bool                            True if all adapters succeeded
+     */
+    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null) : bool
     {
         $success = true;
         foreach ($this->adapters as $adapter) {
@@ -42,7 +57,13 @@ class ChainCacheAdapter implements CacheInterface
         return $success;
     }
 
-    public function delete(string $key): bool
+    /**
+     * Removes an item from all cache layers
+     *
+     * @param  string  $key  Cache key
+     * @return bool          True if all adapters succeeded
+     */
+    public function delete(string $key) : bool
     {
         $success = true;
         foreach ($this->adapters as $adapter) {
@@ -51,7 +72,12 @@ class ChainCacheAdapter implements CacheInterface
         return $success;
     }
 
-    public function clear(): bool
+    /**
+     * Clears all cache layers
+     *
+     * @return bool True if all adapters succeeded
+     */
+    public function clear() : bool
     {
         $success = true;
         foreach ($this->adapters as $adapter) {
@@ -60,7 +86,13 @@ class ChainCacheAdapter implements CacheInterface
         return $success;
     }
 
-    public function has(string $key): bool
+    /**
+     * Checks if an item exists in any cache layer
+     *
+     * @param  string  $key  Cache key
+     * @return bool
+     */
+    public function has(string $key) : bool
     {
         foreach ($this->adapters as $adapter) {
             if ($adapter->has($key)) {
@@ -70,10 +102,15 @@ class ChainCacheAdapter implements CacheInterface
         return false;
     }
 
-    public function getMultiple(iterable $keys, mixed $default = null): iterable
+    /**
+     * Retrieves multiple items from the chain
+     *
+     * @param  iterable  $keys     List of keys
+     * @param  mixed     $default  Default value
+     * @return iterable            Map of key => value
+     */
+    public function getMultiple(iterable $keys, mixed $default = null) : iterable
     {
-        // For simplicity, we implement via individual gets,
-        // but a more efficient implementation would follow the get() logic
         $result = [];
         foreach ($keys as $key) {
             $result[$key] = $this->get($key, $default);
@@ -81,7 +118,14 @@ class ChainCacheAdapter implements CacheInterface
         return $result;
     }
 
-    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
+    /**
+     * Stores multiple items across all cache layers
+     *
+     * @param  iterable                $values  Map of key => value
+     * @param  null|int|\DateInterval  $ttl     Optional TTL
+     * @return bool                             True if all succeeded
+     */
+    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null) : bool
     {
         $success = true;
         foreach ($values as $key => $value) {
@@ -90,7 +134,13 @@ class ChainCacheAdapter implements CacheInterface
         return $success;
     }
 
-    public function deleteMultiple(iterable $keys): bool
+    /**
+     * Removes multiple items from all cache layers
+     *
+     * @param  iterable  $keys  List of keys
+     * @return bool             True if all succeeded
+     */
+    public function deleteMultiple(iterable $keys) : bool
     {
         $success = true;
         foreach ($keys as $key) {

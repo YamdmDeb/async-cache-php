@@ -13,9 +13,9 @@ interface MiddlewareInterface
     /**
      * Handle the cache request
      * 
-     * @param CacheContext $context The current resolution state
-     * @param callable $next The next middleware in the pipeline
+     * @param  CacheContext $context  The current resolution state
+     * @param  callable     $next     The next middleware in the pipeline
      * @return Future
      */
-    public function handle(CacheContext $context, callable $next): Future;
+    public function handle(CacheContext $context, callable $next) : Future;
 }

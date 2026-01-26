@@ -17,6 +17,11 @@ use Psr\Log\LoggerInterface;
  */
 class SourceFetchMiddleware implements MiddlewareInterface
 {
+    /**
+     * @param  CacheStorage                   $storage     The cache interaction layer
+     * @param  LoggerInterface                $logger      Logging implementation
+     * @param  EventDispatcherInterface|null  $dispatcher  Event dispatcher for telemetry
+     */
     public function __construct(
         private CacheStorage $storage,
         private LoggerInterface $logger,
@@ -24,18 +29,23 @@ class SourceFetchMiddleware implements MiddlewareInterface
     ) {
     }
 
-    public function handle(CacheContext $context, callable $next): Future
+    /**
+     * @param  CacheContext  $context  The resolution state
+     * @param  callable      $next     Next handler in the chain (usually empty destination)
+     * @return Future                  Future resolving to freshly fetched data
+     */
+    public function handle(CacheContext $context, callable $next) : Future
     {
         $this->dispatcher?->dispatch(new CacheMissEvent($context->key));
-        
+
         $fetchStartTime = microtime(true);
-        
+
         // We call the factory and wrap the result in our native Future
         $sourceResult = ($context->promiseFactory)();
-        
+
         // Use Deferred to bridge from whatever the factory returns (Guzzle/React/Value) to Future
         $deferred = new Deferred();
-        
+
         if (method_exists($sourceResult, 'then')) {
             $sourceResult->then(
                 fn($v) => $deferred->resolve($v),
@@ -56,7 +66,7 @@ class SourceFetchMiddleware implements MiddlewareInterface
                     microtime(true) - $context->startTime, 
                     $context->options->tags
                 ));
-                
+
                 return $data;
             },
             function ($reason) use ($context) {

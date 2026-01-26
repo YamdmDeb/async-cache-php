@@ -10,16 +10,16 @@ use Fyennyi\AsyncCache\Enum\CacheStrategy;
 class CacheOptions
 {
     /**
-     * @param  int|null  $ttl  Logical Time-To-Live in seconds (how long data is considered fresh)
-     * @param  int  $stale_grace_period  How long to keep stale data physically in cache after logical TTL expires (default: 24h)
-     * @param  bool  $serve_stale_if_limited  If true, returns stale data instead of rejection when rate limit is hit
-     * @param  CacheStrategy  $strategy  Caching strategy (Strict, Background, ForceRefresh)
-     * @param  bool  $compression  Whether to compress data before storing
-     * @param  int  $compression_threshold  Minimum data size in bytes to trigger compression
-     * @param  bool  $fail_safe  If true, catch cache adapter exceptions and treat as misses
-     * @param  float  $x_fetch_beta  Beta coefficient for X-Fetch algorithm (0 to disable)
-     * @param  string|null  $rate_limit_key  Key for rate limiting grouping (e.g. 'alerts_api')
-     * @param  array  $tags  Tags for cache invalidation (if supported by cache adapter)
+     * @param  int|null       $ttl                     Logical Time-To-Live in seconds (how long data is considered fresh)
+     * @param  int            $stale_grace_period      How long to keep stale data physically in cache after logical TTL expires (default: 24h)
+     * @param  bool           $serve_stale_if_limited  If true, returns stale data instead of rejection when rate limit is hit
+     * @param  CacheStrategy  $strategy                Caching strategy (Strict, Background, ForceRefresh)
+     * @param  bool           $compression             Whether to compress data before storing
+     * @param  int            $compression_threshold   Minimum data size in bytes to trigger compression
+     * @param  bool           $fail_safe               If true, catch cache adapter exceptions and treat as misses
+     * @param  float          $x_fetch_beta            Beta coefficient for X-Fetch algorithm (0 to disable)
+     * @param  string|null    $rate_limit_key          Key for rate limiting grouping (e.g. 'alerts_api')
+     * @param  array          $tags                    Tags for cache invalidation (if supported by cache adapter)
      */
     public function __construct(
         public ?int $ttl = 3600,

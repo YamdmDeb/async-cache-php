@@ -11,10 +11,14 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * Middleware that catches exceptions and returns stale data if available.
+ * High-availability middleware that catches exceptions and serves stale data
  */
 class StaleOnErrorMiddleware implements MiddlewareInterface
 {
+    /**
+     * @param  LoggerInterface|null           $logger      Logger for reporting failures
+     * @param  EventDispatcherInterface|null  $dispatcher  Dispatcher for telemetry events
+     */
     public function __construct(
         private ?LoggerInterface $logger = null,
         private ?EventDispatcherInterface $dispatcher = null
@@ -22,7 +26,12 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
         $this->logger = $this->logger ?? new NullLogger();
     }
 
-    public function handle(CacheContext $context, callable $next): Future
+    /**
+     * @param  CacheContext  $context  The resolution state
+     * @param  callable      $next     Next handler in the chain
+     * @return Future                  Future resolving to fresh or stale data
+     */
+    public function handle(CacheContext $context, callable $next) : Future
     {
         return $next($context)->then(
             fn($data) => $data,
@@ -33,7 +42,6 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
                         'reason' => $reason instanceof \Throwable ? $reason->getMessage() : (string)$reason
                     ]);
                     
-                    // CRITICAL: Dispatch the Stale event so the UI knows what happened
                     $this->dispatcher?->dispatch(new CacheStatusEvent(
                         $context->key, 
                         CacheStatus::Stale, 

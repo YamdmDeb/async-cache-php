@@ -13,9 +13,19 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Reference;
 
+/**
+ * Dependency injection extension for Symfony
+ */
 class AsyncCacheExtension extends Extension
 {
-    public function load(array $configs, ContainerBuilder $container): void
+    /**
+     * Loads the configuration and registers the AsyncCacheManager service
+     *
+     * @param  array             $configs    The configuration array
+     * @param  ContainerBuilder  $container  The container builder
+     * @return void
+     */
+    public function load(array $configs, ContainerBuilder $container) : void
     {
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);

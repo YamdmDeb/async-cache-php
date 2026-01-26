@@ -3,10 +3,11 @@
 namespace Fyennyi\AsyncCache\Serializer;
 
 /**
- * High-performance serializer using igbinary extension with fallback to PHP serialize
+ * High-performance serializer using the igbinary PHP extension
  */
 class IgbinarySerializer implements SerializerInterface
 {
+    /** @var bool Whether igbinary extension is active */
     private bool $supported;
 
     public function __construct()
@@ -14,7 +15,11 @@ class IgbinarySerializer implements SerializerInterface
         $this->supported = extension_loaded('igbinary');
     }
 
-    public function serialize(mixed $data): string
+    /**
+     * @param  mixed  $data  Data to serialize
+     * @return string
+     */
+    public function serialize(mixed $data) : string
     {
         if ($this->supported) {
             return igbinary_serialize($data);
@@ -23,7 +28,11 @@ class IgbinarySerializer implements SerializerInterface
         return serialize($data);
     }
 
-    public function unserialize(string $data): mixed
+    /**
+     * @param  string  $data  Serialized string
+     * @return mixed
+     */
+    public function unserialize(string $data) : mixed
     {
         if ($this->supported) {
             return igbinary_unserialize($data);
