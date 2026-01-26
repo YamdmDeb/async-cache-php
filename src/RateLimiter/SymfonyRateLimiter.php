@@ -11,13 +11,13 @@ use Symfony\Component\RateLimiter\Storage\StorageInterface;
  */
 class SymfonyRateLimiter implements RateLimiterInterface
 {
-    /** @var StorageInterface  Storage for rate limiter states */
+    /** @var StorageInterface Storage for rate limiter states */
     private StorageInterface $storage;
 
-    /** @var array  Map of active limiter instances */
+    /** @var array Map of active limiter instances */
     private array $limiters = [];
 
-    /** @var array  Configuration storage for keys */
+    /** @var array Configuration storage for keys */
     private array $config = [];
 
     /**
