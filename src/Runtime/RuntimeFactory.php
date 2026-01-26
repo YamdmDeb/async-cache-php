@@ -9,11 +9,13 @@ class RuntimeFactory
 {
     public static function create(): RuntimeInterface
     {
+        if (FiberRuntime::isSupported()) {
+            return new FiberRuntime();
+        }
+
         if (ReactRuntime::isSupported()) {
             return new ReactRuntime();
         }
-
-        // Future: add FiberRuntime::isSupported() here
 
         return new NativeRuntime();
     }
