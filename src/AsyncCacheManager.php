@@ -18,13 +18,13 @@ use Fyennyi\AsyncCache\RateLimiter\RateLimiterFactory;
 use Fyennyi\AsyncCache\RateLimiter\RateLimiterInterface;
 use Fyennyi\AsyncCache\Serializer\SerializerInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
+use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
-use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
-use React\Promise\PromiseInterface as ReactPromiseInterface;
 use function React\Async\await;
+use React\Promise\PromiseInterface as ReactPromiseInterface;
 
 /**
  * Universal Asynchronous Cache Manager powered by native Futures
@@ -91,7 +91,7 @@ class AsyncCacheManager
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             $res = ($ctx->promiseFactory)();
             $deferred = new Deferred();
-            
+
             if (method_exists($res, 'then')) {
                 $res->then(fn($v) => $deferred->resolve($v), fn($r) => $deferred->reject($r));
             } else {

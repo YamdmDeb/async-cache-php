@@ -16,8 +16,8 @@ class TokenBucketRateLimiter implements RateLimiterInterface
      * @param  int  $refillInterval  Seconds between refills
      */
     public function __construct(
-        private int $capacity = 100, 
-        private int $refillRate = 10, 
+        private int $capacity = 100,
+        private int $refillRate = 10,
         private int $refillInterval = 1
     ) {
     }

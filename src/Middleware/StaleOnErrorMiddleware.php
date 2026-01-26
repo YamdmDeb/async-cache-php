@@ -41,14 +41,14 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
                         'key' => $context->key,
                         'reason' => $reason instanceof \Throwable ? $reason->getMessage() : (string)$reason
                     ]);
-                    
+
                     $this->dispatcher?->dispatch(new CacheStatusEvent(
-                        $context->key, 
-                        CacheStatus::Stale, 
-                        microtime(true) - $context->startTime, 
+                        $context->key,
+                        CacheStatus::Stale,
+                        microtime(true) - $context->startTime,
                         $context->options->tags
                     ));
-                    
+
                     return $context->staleItem->data;
                 }
 

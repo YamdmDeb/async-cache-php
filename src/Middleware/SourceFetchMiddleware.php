@@ -6,8 +6,8 @@ use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
-use Fyennyi\AsyncCache\Event\CacheStatusEvent;
 use Fyennyi\AsyncCache\Event\CacheMissEvent;
+use Fyennyi\AsyncCache\Event\CacheStatusEvent;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
@@ -59,11 +59,11 @@ class SourceFetchMiddleware implements MiddlewareInterface
             function ($data) use ($context, $fetchStartTime) {
                 $generationTime = microtime(true) - $fetchStartTime;
                 $this->storage->set($context->key, $data, $context->options, $generationTime);
-                
+
                 $this->dispatcher?->dispatch(new CacheStatusEvent(
-                    $context->key, 
-                    CacheStatus::Miss, 
-                    microtime(true) - $context->startTime, 
+                    $context->key,
+                    CacheStatus::Miss,
+                    microtime(true) - $context->startTime,
                     $context->options->tags
                 ));
 

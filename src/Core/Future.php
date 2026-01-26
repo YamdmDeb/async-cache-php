@@ -4,8 +4,8 @@ namespace Fyennyi\AsyncCache\Core;
 
 use GuzzleHttp\Promise\Promise as GuzzlePromise;
 use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
-use React\Promise\PromiseInterface as ReactPromiseInterface;
 use React\Promise\Deferred as ReactDeferred;
+use React\Promise\PromiseInterface as ReactPromiseInterface;
 
 /**
  * The internal "currency" of the library representing a future value
