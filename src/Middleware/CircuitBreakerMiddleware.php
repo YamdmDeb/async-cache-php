@@ -36,6 +36,8 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Monitors service health and prevents requests during failure states
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @return Future                  Future result or immediate rejection
@@ -82,6 +84,11 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
 
     /**
      * Handles successful request completion
+     * 
+     * @param  string  $stateKey    Storage key for state
+     * @param  string  $failureKey  Storage key for failure count
+     * @param  string  $key         Resource identifier
+     * @return void
      */
     private function onSuccess(string $stateKey, string $failureKey, string $key) : void
     {
@@ -92,6 +99,11 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
 
     /**
      * Handles request failure
+     * 
+     * @param  string  $stateKey    Storage key for state
+     * @param  string  $failureKey  Storage key for failure count
+     * @param  string  $key         Resource identifier
+     * @return void
      */
     private function onFailure(string $stateKey, string $failureKey, string $key) : void
     {

@@ -25,8 +25,7 @@ class Future
     public function __construct() {}
 
     /**
-     * Attaches a listener to be called when the value is ready
-     * Unlike Promise::then, this does not return a new Future to avoid deadlocks and chaining complexity
+     * Attaches a listener to be called when the value is ready without returning a new Future
      *
      * @param  callable|null  $onFulfilled  Success handler receiving the result
      * @param  callable|null  $onRejected   Failure handler receiving the error
@@ -51,22 +50,22 @@ class Future
     }
 
     /**
-     * Synchronously waits for the value to arrive
-     * Uses ReactPHP async/await mechanism under the hood to drive the loop if needed
+     * Synchronously waits for the value to arrive using ReactPHP await mechanism
      *
      * @return mixed  The resolved value
+     *
      * @throws \Throwable If the operation failed
      */
     public function wait() : mixed
     {
         // Bridge to ReactPHP's await mechanism without full Adapter dependency
         $deferred = new \React\Promise\Deferred();
-        
+
         $this->onResolve(
             fn($v) => $deferred->resolve($v),
             fn($e) => $deferred->reject($e)
         );
-        
+
         return \React\Async\await($deferred->promise());
     }
 
@@ -89,7 +88,7 @@ class Future
     /**
      * Sets the failure reason and triggers listeners
      *
-     * @internal This method should only be called by the Deferred owner.
+     * @internal This method should only be called by the Deferred owner
      *
      * @param  mixed  $reason  The reason for failure (usually Throwable)
      * @return void

@@ -28,6 +28,8 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Catches errors and returns stale data if available
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @return Future                  Future resolving to fresh or stale data

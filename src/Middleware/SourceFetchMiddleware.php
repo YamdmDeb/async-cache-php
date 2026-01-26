@@ -30,6 +30,8 @@ class SourceFetchMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Fetches fresh data from the source and updates cache
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain (usually empty destination)
      * @return Future                  Future resolving to freshly fetched data

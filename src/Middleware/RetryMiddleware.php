@@ -30,6 +30,8 @@ class RetryMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Handles the request with automatic retry logic
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @return Future                  Future result
@@ -40,7 +42,7 @@ class RetryMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Recursively attempt the request
+     * Recursively attempt the request with backoff
      *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain

@@ -32,6 +32,8 @@ class CacheLookupMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Performs initial cache lookup and handles freshness validation
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @return Future                  Future resolving to cached or fresh data

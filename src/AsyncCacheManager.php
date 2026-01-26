@@ -83,7 +83,6 @@ class AsyncCacheManager
         $context = new CacheContext($key, $promise_factory, $options);
         
         // Execute the pipeline. The result is a Future from the last middleware.
-        // We provide a fallback destination handler, though SourceFetchMiddleware usually intercepts it.
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             $res = ($ctx->promiseFactory)();
             $deferred = new Deferred();
@@ -106,7 +105,7 @@ class AsyncCacheManager
     }
 
     /**
-     * Primary API: Returns a Guzzle Promise for industry compatibility
+     * Returns a Guzzle Promise for industry compatibility
      *
      * @template T
      *
@@ -121,7 +120,7 @@ class AsyncCacheManager
     }
 
     /**
-     * ReactPHP API: Returns a native ReactPHP Promise for high performance
+     * Returns a native ReactPHP Promise for high performance
      *
      * @template T
      *
@@ -136,7 +135,7 @@ class AsyncCacheManager
     }
 
     /**
-     * Fiber API: Returns the result directly using PHP 8.1+ Fibers
+     * Returns the result directly using PHP 8.1+ Fibers
      *
      * @template T
      *

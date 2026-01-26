@@ -35,6 +35,8 @@ class AsyncLockMiddleware implements MiddlewareInterface
     }
 
     /**
+     * Orchestrates non-blocking lock acquisition and cache population
+     *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @return Future                  Future resolving to fresh or stale data
@@ -98,7 +100,12 @@ class AsyncLockMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Helper to execute next middleware and ensure lock release
+     * Executes next middleware and ensures lock release
+     * 
+     * @param  CacheContext  $context   The resolution state
+     * @param  callable      $next      Next handler in the chain
+     * @param  string        $lock_key  Key of the acquired lock
+     * @return Future                   Result future
      */
     private function handleWithLock(CacheContext $context, callable $next, string $lock_key) : Future
     {
