@@ -7,7 +7,7 @@ namespace Fyennyi\AsyncCache\Lock;
  */
 class InMemoryLockAdapter implements LockInterface
 {
-    /** @var array<string, int>  Map of key => expiry_timestamp */
+    /** @var array<string, int> Map of key => expiry_timestamp */
     private array $locks = [];
 
     /**
