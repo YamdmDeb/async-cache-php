@@ -2,7 +2,6 @@
 
 namespace Fyennyi\AsyncCache\Core;
 
-
 /**
  * High-level timer for non-blocking asynchronous delays
  */
@@ -19,7 +18,7 @@ class Timer
         $deferred = new Deferred();
 
         if (function_exists('React\Promise\Timer\resolve')) {
-            reactDelay($seconds)->then(fn() => $deferred->resolve(null));
+            \React\Promise\Timer\resolve($seconds)->then(fn() => $deferred->resolve(null));
         } else {
             // Fallback for extreme cases (should not happen in proper install)
             usleep((int)($seconds * 1000000));
