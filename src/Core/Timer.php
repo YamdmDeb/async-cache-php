@@ -17,14 +17,9 @@ class Timer
      */
     public static function delay(float $seconds) : Future
     {
-        $deferred = new Deferred(function() {
-            // Drive the loop if someone calls wait() on this timer
-            if (class_exists('React\EventLoop\Loop')) {
-                \React\EventLoop\Loop::run();
-            }
-        });
+        $deferred = new Deferred();
 
-        if (class_exists('React\Promise\Timer\resolve')) {
+        if (function_exists('React\Promise\Timer\resolve')) {
             reactDelay($seconds)->then(fn() => $deferred->resolve(null));
         } else {
             // Fallback for extreme cases (should not happen in proper install)

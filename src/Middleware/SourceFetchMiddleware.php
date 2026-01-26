@@ -43,39 +43,57 @@ class SourceFetchMiddleware implements MiddlewareInterface
         // We call the factory and wrap the result in our native Future
         $sourceResult = ($context->promiseFactory)();
 
-        // Use Deferred to bridge from whatever the factory returns (Guzzle/React/Value) to Future
-        $deferred = new Deferred();
+        // Use Deferred to bridge from whatever the factory returns (Guzzle/React/Value/Future) to our Future
+        $sourceDeferred = new Deferred();
 
-        if (method_exists($sourceResult, 'then')) {
+        if ($sourceResult instanceof Future) {
+            $sourceResult->onResolve(
+                fn($v) => $sourceDeferred->resolve($v),
+                fn($r) => $sourceDeferred->reject($r)
+            );
+        } elseif (is_object($sourceResult) && method_exists($sourceResult, 'then')) {
+            // Support Guzzle/React promises via duck typing
             $sourceResult->then(
-                fn($v) => $deferred->resolve($v),
-                fn($r) => $deferred->reject($r)
+                fn($v) => $sourceDeferred->resolve($v),
+                fn($r) => $sourceDeferred->reject($r)
             );
         } else {
-            $deferred->resolve($sourceResult);
+            $sourceDeferred->resolve($sourceResult);
         }
 
-        return $deferred->future()->then(
-            function ($data) use ($context, $fetchStartTime) {
-                $generationTime = microtime(true) - $fetchStartTime;
-                $this->storage->set($context->key, $data, $context->options, $generationTime);
+        // Create a new deferred for the "after-save" result
+        $finalDeferred = new Deferred();
 
-                $this->dispatcher?->dispatch(new CacheStatusEvent(
-                    $context->key,
-                    CacheStatus::Miss,
-                    microtime(true) - $context->startTime,
-                    $context->options->tags
-                ));
+        $sourceDeferred->future()->onResolve(
+            function ($data) use ($context, $fetchStartTime, $finalDeferred) {
+                try {
+                    $generationTime = microtime(true) - $fetchStartTime;
+                    $this->storage->set($context->key, $data, $context->options, $generationTime);
 
-                return $data;
+                    $this->dispatcher?->dispatch(new CacheStatusEvent(
+                        $context->key,
+                        CacheStatus::Miss,
+                        microtime(true) - $context->startTime,
+                        $context->options->tags
+                    ));
+
+                    $finalDeferred->resolve($data);
+                } catch (\Throwable $e) {
+                    // If saving fails, we still might want to return the data, or log error
+                    // For now, we propagate the error if storage fails critically
+                    $finalDeferred->reject($e);
+                }
             },
-            function ($reason) use ($context) {
+            function ($reason) use ($context, $finalDeferred) {
                 $this->logger->error('AsyncCache FETCH_ERROR: failed to fetch fresh data', [
                     'key' => $context->key,
                     'reason' => $reason
                 ]);
-                throw $reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason);
+                
+                $finalDeferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
             }
         );
+
+        return $finalDeferred->future();
     }
 }

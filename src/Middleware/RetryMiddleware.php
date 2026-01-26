@@ -3,7 +3,9 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
-use GuzzleHttp\Promise\PromiseInterface;
+use Fyennyi\AsyncCache\Core\Deferred;
+use Fyennyi\AsyncCache\Core\Future;
+use Fyennyi\AsyncCache\Core\Timer;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -30,9 +32,9 @@ class RetryMiddleware implements MiddlewareInterface
     /**
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
-     * @return PromiseInterface        Future result
+     * @return Future                  Future result
      */
-    public function handle(CacheContext $context, callable $next) : PromiseInterface
+    public function handle(CacheContext $context, callable $next) : Future
     {
         return $this->attempt($context, $next, 0);
     }
@@ -43,35 +45,46 @@ class RetryMiddleware implements MiddlewareInterface
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
      * @param  int           $retries  Current retry attempt counter
-     * @return PromiseInterface        Result of the attempt
+     * @return Future                  Result of the attempt
      */
-    private function attempt(CacheContext $context, callable $next, int $retries) : PromiseInterface
+    private function attempt(CacheContext $context, callable $next, int $retries) : Future
     {
-        return $next($context)->otherwise(
-            function ($reason) use ($context, $next, $retries) {
+        $deferred = new Deferred();
+
+        $next($context)->onResolve(
+            function ($value) use ($deferred) {
+                $deferred->resolve($value);
+            },
+            function ($reason) use ($context, $next, $retries, $deferred) {
                 if ($retries >= $this->maxRetries) {
                     $this->logger->error('AsyncCache RETRY: Max retries reached', [
                         'key' => $context->key,
                         'retries' => $retries,
                         'reason' => $reason
                     ]);
-                    throw $reason;
+                    $deferred->reject($reason);
+                    return;
                 }
 
-                $delay = $this->initialDelayMs * pow($this->multiplier, $retries);
+                $delayMs = $this->initialDelayMs * pow($this->multiplier, $retries);
 
                 $this->logger->warning('AsyncCache RETRY: Request failed, retrying...', [
                     'key' => $context->key,
                     'attempt' => $retries + 1,
-                    'delay_ms' => $delay,
+                    'delay_ms' => $delayMs,
                     'reason' => $reason
                 ]);
 
-                // Wait for the delay (still blocking, but now using Context)
-                usleep((int) ($delay * 1000));
-
-                return $this->attempt($context, $next, $retries + 1);
+                // Non-blocking wait
+                Timer::delay($delayMs / 1000)->onResolve(function () use ($context, $next, $retries, $deferred) {
+                    $this->attempt($context, $next, $retries + 1)->onResolve(
+                        fn($v) => $deferred->resolve($v),
+                        fn($e) => $deferred->reject($e)
+                    );
+                });
             }
         );
+
+        return $deferred->future();
     }
 }

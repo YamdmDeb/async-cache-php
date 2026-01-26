@@ -59,49 +59,62 @@ class AsyncLockMiddleware implements MiddlewareInterface
 
         $startTime = microtime(true);
         $timeout = 10.0;
+        
+        // Create a master deferred that will eventually hold the result of the successful attempt
+        $masterDeferred = new Deferred();
 
-        $attempt = function () use (&$attempt, $context, $next, $lock_key, $startTime, $timeout) {
+        $attempt = function () use (&$attempt, $context, $next, $lock_key, $startTime, $timeout, $masterDeferred) {
             if ($this->lock_provider->acquire($lock_key, 30.0, false)) {
                 $cached_item = $this->storage->get($context->key, $context->options);
                 if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
                     $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, microtime(true) - $startTime, $context->options->tags));
                     $this->lock_provider->release($lock_key);
-                    $deferred = new Deferred();
-                    $deferred->resolve($cached_item->data);
-                    return $deferred->future();
+                    $masterDeferred->resolve($cached_item->data);
+                    return;
                 }
-                return $this->handleWithLock($context, $next, $lock_key);
+                
+                // If acquired but no fresh cache, fetch via next middleware
+                $this->handleWithLock($context, $next, $lock_key)->onResolve(
+                    fn($v) => $masterDeferred->resolve($v),
+                    fn($e) => $masterDeferred->reject($e)
+                );
+                return;
             }
 
             if (microtime(true) - $startTime >= $timeout) {
-                throw new \RuntimeException("Could not acquire lock for key: {$context->key} (Timeout)");
+                $masterDeferred->reject(new \RuntimeException("Could not acquire lock for key: {$context->key} (Timeout)"));
+                return;
             }
 
-            return Timer::delay(0.05)->then($attempt);
+            // Retry after delay
+            Timer::delay(0.05)->onResolve(function() use ($attempt) {
+                $attempt();
+            });
         };
 
-        return $attempt();
+        $attempt();
+        
+        return $masterDeferred->future();
     }
 
     /**
      * Helper to execute next middleware and ensure lock release
-     *
-     * @param  CacheContext  $context   The resolution state
-     * @param  callable      $next      Next handler in the chain
-     * @param  string        $lock_key  Key of the acquired lock
-     * @return Future                   Result future
      */
     private function handleWithLock(CacheContext $context, callable $next, string $lock_key) : Future
     {
-        return $next($context)->then(
-            function ($data) use ($lock_key) {
+        $deferred = new Deferred();
+        
+        $next($context)->onResolve(
+            function ($data) use ($lock_key, $deferred) {
                 $this->lock_provider->release($lock_key);
-                return $data;
+                $deferred->resolve($data);
             },
-            function ($reason) use ($lock_key) {
+            function ($reason) use ($lock_key, $deferred) {
                 $this->lock_provider->release($lock_key);
-                throw $reason;
+                $deferred->reject($reason);
             }
         );
+        
+        return $deferred->future();
     }
 }

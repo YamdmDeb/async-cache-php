@@ -6,7 +6,8 @@ use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Future;
 
 /**
- * Implementation of the Singleflight (Request Coalescing) pattern
+ * Implementation of the Singleflight (Request Coalescing) pattern.
+ * Uses the passive Future container to share results among concurrent requests.
  */
 class CoalesceMiddleware implements MiddlewareInterface
 {
@@ -29,14 +30,13 @@ class CoalesceMiddleware implements MiddlewareInterface
         $future = $next($context);
         self::$inFlight[$key] = $future;
 
-        $future->then(
-            function ($value) use ($key) {
+        // Clean up when the operation completes (success or failure)
+        $future->onResolve(
+            function () use ($key) {
                 unset(self::$inFlight[$key]);
-                return $value;
             },
-            function ($reason) use ($key) {
+            function () use ($key) {
                 unset(self::$inFlight[$key]);
-                throw $reason;
             }
         );
 

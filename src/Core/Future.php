@@ -2,153 +2,147 @@
 
 namespace Fyennyi\AsyncCache\Core;
 
-use GuzzleHttp\Promise\Promise as GuzzlePromise;
-use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
-use React\Promise\Deferred as ReactDeferred;
-use React\Promise\PromiseInterface as ReactPromiseInterface;
-
 /**
- * The internal "currency" of the library representing a future value
+ * The internal "currency" of the library representing a value that will eventually be available.
+ * Refactored to be a passive value placeholder (Container).
  */
 class Future
 {
-    /** @var array<callable> */
-    private array $handlers = [];
+    /** @var array<callable> List of callbacks waiting for resolution */
+    private array $listeners = [];
+
+    /** @var mixed The resolved value or rejection reason */
     private mixed $result = null;
-    private bool $resolved = false;
-    private bool $rejected = false;
+
+    /** @var bool Whether the future has been successfully resolved */
+    private bool $isResolved = false;
+
+    /** @var bool Whether the future has been rejected */
+    private bool $isRejected = false;
 
     /**
-     * @param callable|null $waitFn Optional function to drive resolution when wait() is called
+     * Internal constructor. Only Deferred should create instances.
      */
-    public function __construct(private $waitFn = null) {}
+    public function __construct() {}
 
     /**
-     * Attaches callbacks for resolution or rejection
+     * Attaches a listener to be called when the value is ready.
+     * Unlike Promise::then, this does not return a new Future to avoid deadlocks and chaining complexity.
      *
-     * @param  callable|null  $onFulfilled  Success handler
-     * @param  callable|null  $onRejected   Failure handler
-     * @return self                         New future for chaining
+     * @param  callable|null  $onFulfilled  Success handler receiving the result
+     * @param  callable|null  $onRejected   Failure handler receiving the error
+     * @return self                         Returns itself for fluent interface (but not chaining new futures)
      */
-    public function then(callable $onFulfilled = null, callable $onRejected = null) : self
+    public function onResolve(?callable $onFulfilled = null, ?callable $onRejected = null) : self
     {
-        $next = new self($this->waitFn);
-
-        $handler = function () use ($next, $onFulfilled, $onRejected) {
-            try {
-                if ($this->rejected) {
-                    if ($onRejected) {
-                        $res = $onRejected($this->result);
-                        $next->resolve($res);
-                    } else {
-                        $next->reject($this->result);
-                    }
-                } else {
-                    if ($onFulfilled) {
-                        $res = $onFulfilled($this->result);
-                        $next->resolve($res);
-                    } else {
-                        $next->resolve($this->result);
-                    }
-                }
-            } catch (\Throwable $e) {
-                $next->reject($e);
-            }
-        };
-
-        if ($this->resolved || $this->rejected) {
-            $handler();
+        if ($this->isResolved) {
+            if ($onFulfilled) $onFulfilled($this->result);
+        } elseif ($this->isRejected) {
+            if ($onRejected) $onRejected($this->result);
         } else {
-            $this->handlers[] = $handler;
+            $this->listeners[] = function() use ($onFulfilled, $onRejected) {
+                if ($this->isRejected) {
+                    if ($onRejected) $onRejected($this->result);
+                } else {
+                    if ($onFulfilled) $onFulfilled($this->result);
+                }
+            };
         }
-
-        return $next;
+        return $this;
     }
 
     /**
-     * Successfully resolves the future with a value
-     *
-     * @param  mixed  $value  The resolution value
-     * @return void
-     */
-    public function resolve(mixed $value) : void
-    {
-        if ($this->resolved || $this->rejected) {
-            return;
-        }
-        $this->result = $value;
-        $this->resolved = true;
-        $this->fire();
-    }
-
-    /**
-     * Rejects the future with a reason
-     *
-     * @param  mixed  $reason  The rejection reason (usually Throwable)
-     * @return void
-     */
-    public function reject(mixed $reason) : void
-    {
-        if ($this->resolved || $this->rejected) {
-            return;
-        }
-        $this->result = $reason;
-        $this->rejected = true;
-        $this->fire();
-    }
-
-    /**
-     * Synchronously waits for the future to resolve
+     * Synchronously waits for the value to arrive.
+     * Uses ReactPHP async/await mechanism under the hood to drive the loop if needed.
      *
      * @return mixed  The resolved value
-     * @throws \Throwable If the future was rejected
+     * @throws \Throwable If the operation failed
      */
-    public function wait()
+    public function wait() : mixed
     {
-        if (! $this->resolved && ! $this->rejected && $this->waitFn) {
-            ($this->waitFn)();
+        // Bridge to ReactPHP's await mechanism without full Adapter dependency
+        $deferred = new \React\Promise\Deferred();
+        
+        $this->onResolve(
+            fn($v) => $deferred->resolve($v),
+            fn($e) => $deferred->reject($e)
+        );
+        
+        return \React\Async\await($deferred->promise());
+    }
+
+    /**
+     * Sets the successful result and triggers listeners.
+     *
+     * @internal This method should only be called by the Deferred owner.
+     *
+     * @param  mixed  $value  The value to complete the future with
+     * @return void
+     */
+    public function fulfill(mixed $value) : void
+    {
+        if ($this->isResolved || $this->isRejected) return;
+        $this->result = $value;
+        $this->isResolved = true;
+        $this->fire();
+    }
+
+    /**
+     * Sets the failure reason and triggers listeners.
+     *
+     * @internal This method should only be called by the Deferred owner.
+     *
+     * @param  mixed  $reason  The reason for failure (usually Throwable)
+     * @return void
+     */
+    public function notifyFailure(mixed $reason) : void
+    {
+        if ($this->isResolved || $this->isRejected) return;
+        $this->result = $reason;
+        $this->isRejected = true;
+        $this->fire();
+    }
+
+    /**
+     * Triggers all attached listeners and clears the list.
+     *
+     * @return void
+     */
+    private function fire() : void
+    {
+        foreach ($this->listeners as $listener) {
+            $listener();
         }
+        $this->listeners = [];
+    }
+
+    /**
+     * Checks if the future has completed (success or failure).
+     *
+     * @return bool
+     */
+    public function isReady() : bool
+    {
+        return $this->isResolved || $this->isRejected;
+    }
+
+    /**
+     * Returns the result if ready, or null if pending (or void/null result).
+     *
+     * @return mixed
+     */
+    public function getResult() : mixed
+    {
         return $this->result;
     }
 
     /**
-     * Converts the future to a Guzzle Promise
+     * Checks if the future was rejected.
      *
-     * @return GuzzlePromiseInterface
+     * @return bool
      */
-    public function toGuzzle() : GuzzlePromiseInterface
+    public function isFailed() : bool
     {
-        $guzzle = new GuzzlePromise(fn() => $this->wait());
-        $this->then(
-            fn($v) => $guzzle->resolve($v),
-            fn($r) => $guzzle->reject($r)
-        );
-        return $guzzle;
-    }
-
-    /**
-     * Converts the future to a ReactPHP Promise
-     *
-     * @return ReactPromiseInterface
-     */
-    public function toReact() : ReactPromiseInterface
-    {
-        $deferred = new ReactDeferred();
-        $this->then(
-            fn($v) => $deferred->resolve($v),
-            fn($r) => $deferred->reject($r)
-        );
-        return $deferred->promise();
-    }
-
-    /**
-     * Triggers all attached handlers
-     */
-    private function fire() : void
-    {
-        foreach ($this->handlers as $handler) {
-            $handler();
-        }
-        $this->handlers = [];
+        return $this->isRejected;
     }
 }

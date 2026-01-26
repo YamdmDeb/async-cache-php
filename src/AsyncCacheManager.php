@@ -2,6 +2,7 @@
 
 namespace Fyennyi\AsyncCache;
 
+use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
@@ -21,8 +22,6 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
-use function React\Async\async;
-use function React\Async\await;
 use React\Promise\PromiseInterface as ReactPromiseInterface;
 use Symfony\Component\RateLimiter\LimiterInterface;
 
@@ -82,35 +81,28 @@ class AsyncCacheManager
     public function wrapFuture(string $key, callable $promise_factory, CacheOptions $options) : Future
     {
         $context = new CacheContext($key, $promise_factory, $options);
-        $deferred = new Deferred();
+        
+        // Execute the pipeline. The result is a Future from the last middleware.
+        // We provide a fallback destination handler, though SourceFetchMiddleware usually intercepts it.
+        return $this->pipeline->send($context, function (CacheContext $ctx) {
+            $res = ($ctx->promiseFactory)();
+            $deferred = new Deferred();
 
-        async(function () use ($context, $deferred) {
-            try {
-                $future = $this->pipeline->send($context, function (CacheContext $ctx) {
-                    $res = ($ctx->promiseFactory)();
-                    $innerDeferred = new Deferred();
-
-                    if (method_exists($res, 'then')) {
-                        $res->then(
-                            fn($v) => $innerDeferred->resolve($v),
-                            fn($r) => $innerDeferred->reject($r)
-                        );
-                    } else {
-                        $innerDeferred->resolve($res);
-                    }
-                    return $innerDeferred->future();
-                });
-
-                $future->then(
+            if ($res instanceof Future) {
+                $res->onResolve(
                     fn($v) => $deferred->resolve($v),
                     fn($r) => $deferred->reject($r)
                 );
-            } catch (\Throwable $e) {
-                $deferred->reject($e);
+            } elseif (is_object($res) && method_exists($res, 'then')) {
+                $res->then(
+                    fn($v) => $deferred->resolve($v),
+                    fn($r) => $deferred->reject($r)
+                );
+            } else {
+                $deferred->resolve($res);
             }
-        })();
-
-        return $deferred->future();
+            return $deferred->future();
+        });
     }
 
     /**
@@ -125,7 +117,7 @@ class AsyncCacheManager
      */
     public function wrap(string $key, callable $promise_factory, CacheOptions $options) : GuzzlePromiseInterface
     {
-        return $this->wrapFuture($key, $promise_factory, $options)->toGuzzle();
+        return PromiseAdapter::toGuzzle($this->wrapFuture($key, $promise_factory, $options));
     }
 
     /**
@@ -140,7 +132,7 @@ class AsyncCacheManager
      */
     public function wrapReact(string $key, callable $promise_factory, CacheOptions $options) : ReactPromiseInterface
     {
-        return $this->wrapFuture($key, $promise_factory, $options)->toReact();
+        return PromiseAdapter::toReact($this->wrapFuture($key, $promise_factory, $options));
     }
 
     /**
@@ -157,8 +149,7 @@ class AsyncCacheManager
      */
     public function get(string $key, callable $promise_factory, CacheOptions $options) : mixed
     {
-        $future = $this->wrapFuture($key, $promise_factory, $options);
-        return await($future->toReact());
+        return $this->wrapFuture($key, $promise_factory, $options)->wait();
     }
 
     /**
@@ -175,38 +166,38 @@ class AsyncCacheManager
         $lockKey = 'lock:counter:' . $key;
         $deferred = new Deferred();
 
-        async(function () use ($key, $step, $options, $lockKey, $deferred) {
-            $startTime = microtime(true);
-            $timeout = 10.0;
+        $startTime = microtime(true);
+        $timeout = 10.0;
 
-            $attempt = function () use (&$attempt, $key, $step, $options, $lockKey, $deferred, $startTime, $timeout) {
-                if ($this->lock_provider->acquire($lockKey, 10.0, false)) {
-                    try {
-                        $item = $this->storage->get($key, $options);
-                        $currentValue = $item ? (int) $item->data : 0;
-                        $newValue = $currentValue + $step;
-                        $this->storage->set($key, $newValue, $options);
-                        $this->lock_provider->release($lockKey);
-                        $deferred->resolve($newValue);
-                    } catch (\Throwable $e) {
-                        $this->lock_provider->release($lockKey);
-                        $deferred->reject($e);
-                    }
-                    return;
+        $attempt = function () use (&$attempt, $key, $step, $options, $lockKey, $deferred, $startTime, $timeout) {
+            if ($this->lock_provider->acquire($lockKey, 10.0, false)) {
+                try {
+                    $item = $this->storage->get($key, $options);
+                    $currentValue = $item ? (int) $item->data : 0;
+                    $newValue = $currentValue + $step;
+                    $this->storage->set($key, $newValue, $options);
+                    $this->lock_provider->release($lockKey);
+                    $deferred->resolve($newValue);
+                } catch (\Throwable $e) {
+                    $this->lock_provider->release($lockKey);
+                    $deferred->reject($e);
                 }
+                return;
+            }
 
-                if (microtime(true) - $startTime >= $timeout) {
-                    $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
-                    return;
-                }
+            if (microtime(true) - $startTime >= $timeout) {
+                $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
+                return;
+            }
 
-                Timer::delay(0.05)->then($attempt);
-            };
+            Timer::delay(0.05)->onResolve(function() use ($attempt) {
+                $attempt();
+            });
+        };
 
-            $attempt();
-        })();
+        $attempt();
 
-        return $deferred->future()->toGuzzle();
+        return PromiseAdapter::toGuzzle($deferred->future());
     }
 
     /**

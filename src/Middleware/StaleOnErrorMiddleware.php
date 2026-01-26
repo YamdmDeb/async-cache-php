@@ -3,6 +3,7 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
+use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Event\CacheStatusEvent;
@@ -33,9 +34,13 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
      */
     public function handle(CacheContext $context, callable $next) : Future
     {
-        return $next($context)->then(
-            fn($data) => $data,
-            function ($reason) use ($context) {
+        $deferred = new Deferred();
+
+        $next($context)->onResolve(
+            function ($data) use ($deferred) {
+                $deferred->resolve($data);
+            },
+            function ($reason) use ($context, $deferred) {
                 if ($context->staleItem !== null) {
                     $this->logger->warning('AsyncCache STALE_ON_ERROR: fetch failed, serving stale data', [
                         'key' => $context->key,
@@ -49,11 +54,14 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
                         $context->options->tags
                     ));
 
-                    return $context->staleItem->data;
+                    $deferred->resolve($context->staleItem->data);
+                    return;
                 }
 
-                throw $reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason);
+                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
             }
         );
+
+        return $deferred->future();
     }
 }

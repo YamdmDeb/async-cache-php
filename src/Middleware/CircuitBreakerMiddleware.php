@@ -3,8 +3,8 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
-use GuzzleHttp\Promise\Create;
-use GuzzleHttp\Promise\PromiseInterface;
+use Fyennyi\AsyncCache\Core\Deferred;
+use Fyennyi\AsyncCache\Core\Future;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
@@ -38,9 +38,9 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
     /**
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain
-     * @return PromiseInterface        Future result or immediate rejection
+     * @return Future                  Future result or immediate rejection
      */
-    public function handle(CacheContext $context, callable $next) : PromiseInterface
+    public function handle(CacheContext $context, callable $next) : Future
     {
         $stateKey = $this->prefix . $context->key . ':state';
         $failureKey = $this->prefix . $context->key . ':failures';
@@ -52,7 +52,10 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
 
             if (time() - $lastFailureTime < $this->retryTimeout) {
                 $this->logger->error('AsyncCache CIRCUIT_BREAKER: Open state, blocking request', ['key' => $context->key]);
-                return Create::rejectionFor(new \RuntimeException("Circuit Breaker is OPEN for key: {$context->key}"));
+                
+                $deferred = new Deferred();
+                $deferred->reject(new \RuntimeException("Circuit Breaker is OPEN for key: {$context->key}"));
+                return $deferred->future();
             }
 
             // Timeout passed, move to half-open
@@ -61,25 +64,24 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
             $this->logger->warning('AsyncCache CIRCUIT_BREAKER: Half-open state, attempting probe request', ['key' => $context->key]);
         }
 
-        return $next($context)->then(
-            function ($data) use ($stateKey, $failureKey, $context) {
+        $deferred = new Deferred();
+
+        $next($context)->onResolve(
+            function ($data) use ($stateKey, $failureKey, $context, $deferred) {
                 $this->onSuccess($stateKey, $failureKey, $context->key);
-                return $data;
+                $deferred->resolve($data);
             },
-            function ($reason) use ($stateKey, $failureKey, $context) {
+            function ($reason) use ($stateKey, $failureKey, $context, $deferred) {
                 $this->onFailure($stateKey, $failureKey, $context->key);
-                throw $reason;
+                $deferred->reject($reason);
             }
         );
+
+        return $deferred->future();
     }
 
     /**
      * Handles successful request completion
-     *
-     * @param  string  $stateKey    Storage key for state
-     * @param  string  $failureKey  Storage key for failure count
-     * @param  string  $key         Resource identifier
-     * @return void
      */
     private function onSuccess(string $stateKey, string $failureKey, string $key) : void
     {
@@ -90,11 +92,6 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
 
     /**
      * Handles request failure
-     *
-     * @param  string  $stateKey    Storage key for state
-     * @param  string  $failureKey  Storage key for failure count
-     * @param  string  $key         Resource identifier
-     * @return void
      */
     private function onFailure(string $stateKey, string $failureKey, string $key) : void
     {
