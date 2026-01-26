@@ -6,3 +6,4 @@ coverage-report/
 clover.xml
 phpunit.xml
 .php-cs-fixer.cache
+.env
