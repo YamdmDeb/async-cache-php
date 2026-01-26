@@ -70,14 +70,14 @@ $http = new HttpServer(async(function (ServerRequestInterface $request) use ($ma
         try {
             $tracker->lastStatus = null;
 
-            $result = $manager->get('georgia_flag', function() use ($browser) {
+            $result = $manager->wrap('georgia_flag', function() use ($browser) {
                 return $browser->get('https://restcountries.com/v3.1/name/georgia')
                     ->then(function ($response) {
                         $data = json_decode((string)$response->getBody(), true);
                         if (empty($data)) throw new \RuntimeException("Empty API response");
                         return $data[0]['flags']['png'] ?? '';
                     });
-            }, $options);
+            }, $options)->wait();
 
             $latency = round(microtime(true) - $startTime, 4);
 
