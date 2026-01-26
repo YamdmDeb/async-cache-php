@@ -30,7 +30,13 @@ class Pipeline
             array_reverse($this->middlewares),
             function ($next, MiddlewareInterface $middleware) {
                 return function (CacheContext $context) use ($next, $middleware) {
-                    return $middleware->handle($context, $next);
+                    try {
+                        return $middleware->handle($context, $next);
+                    } catch (\Throwable $e) {
+                        $deferred = new Deferred();
+                        $deferred->reject($e);
+                        return $deferred->future();
+                    }
                 };
             },
             function (CacheContext $context) use ($destination) {
