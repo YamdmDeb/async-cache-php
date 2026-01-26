@@ -3,19 +3,19 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
-use React\Promise\PromiseInterface;
+use Fyennyi\AsyncCache\Core\Future;
 
 /**
- * Interface for all AsyncCache middlewares
+ * Interface for all AsyncCache middlewares using library-native Futures
  */
 interface MiddlewareInterface
 {
     /**
-     * Handle the cache request using native ReactPHP promises
+     * Handle the cache request
      * 
      * @param CacheContext $context The current resolution state
      * @param callable $next The next middleware in the pipeline
-     * @return PromiseInterface
+     * @return Future
      */
-    public function handle(CacheContext $context, callable $next): PromiseInterface;
+    public function handle(CacheContext $context, callable $next): Future;
 }

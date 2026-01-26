@@ -3,10 +3,9 @@
 namespace Fyennyi\AsyncCache\Core;
 
 use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
-use React\Promise\PromiseInterface;
 
 /**
- * Orchestrates the execution of middleware stack
+ * Orchestrates the execution of middleware stack using native Futures.
  */
 class Pipeline
 {
@@ -21,7 +20,7 @@ class Pipeline
     /**
      * Send the context through the pipeline
      */
-    public function send(CacheContext $context, callable $destination): PromiseInterface
+    public function send(CacheContext $context, callable $destination): Future
     {
         $pipeline = array_reduce(
             array_reverse($this->middlewares),

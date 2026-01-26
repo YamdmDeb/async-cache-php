@@ -3,30 +3,31 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
+use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Enum\CacheStrategy;
 use Fyennyi\AsyncCache\Event\CacheHitEvent;
 use Fyennyi\AsyncCache\Event\CacheStatusEvent;
 use Fyennyi\AsyncCache\Model\CachedItem;
+use Fyennyi\AsyncCache\Scheduler\SchedulerInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use React\Promise\PromiseInterface;
-use function React\Promise\resolve;
 
 /**
- * Handles initial cache lookup, freshness check and X-Fetch logic
+ * Handles initial cache lookup and freshness check using native Futures
  */
 class CacheLookupMiddleware implements MiddlewareInterface
 {
     public function __construct(
         private CacheStorage $storage,
+        private SchedulerInterface $scheduler,
         private LoggerInterface $logger,
         private ?EventDispatcherInterface $dispatcher = null
     ) {
     }
 
-    public function handle(CacheContext $context, callable $next): PromiseInterface
+    public function handle(CacheContext $context, callable $next): Future
     {
         if ($context->options->strategy === CacheStrategy::ForceRefresh) {
             $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Bypass, 0, $context->options->tags));
@@ -52,16 +53,14 @@ class CacheLookupMiddleware implements MiddlewareInterface
             if ($is_fresh) {
                 $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, microtime(true) - $context->startTime, $context->options->tags));
                 $this->dispatcher?->dispatch(new CacheHitEvent($context->key, $cached_item->data));
-                return resolve($cached_item->data);
+                return $this->scheduler->resolve($cached_item->data);
             }
 
             if ($context->options->strategy === CacheStrategy::Background) {
                 $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Stale, microtime(true) - $context->startTime, $context->options->tags));
                 $this->dispatcher?->dispatch(new CacheHitEvent($context->key, $cached_item->data));
-                
                 $next($context);
-                
-                return resolve($cached_item->data);
+                return $this->scheduler->resolve($cached_item->data);
             }
         }
 

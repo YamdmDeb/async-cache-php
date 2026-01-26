@@ -2,18 +2,18 @@
 
 namespace Fyennyi\AsyncCache\Middleware;
 
-use Fyennyi\AsyncCache\Bridge\PromiseBridge;
 use Fyennyi\AsyncCache\Core\CacheContext;
+use Fyennyi\AsyncCache\Core\Deferred;
+use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Event\CacheStatusEvent;
 use Fyennyi\AsyncCache\Event\CacheMissEvent;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use React\Promise\PromiseInterface;
 
 /**
- * The final middleware that actually calls the source and populates the cache
+ * The final middleware that calls the source and populates the cache using Futures
  */
 class SourceFetchMiddleware implements MiddlewareInterface
 {
@@ -24,14 +24,28 @@ class SourceFetchMiddleware implements MiddlewareInterface
     ) {
     }
 
-    public function handle(CacheContext $context, callable $next): PromiseInterface
+    public function handle(CacheContext $context, callable $next): Future
     {
         $this->dispatcher?->dispatch(new CacheMissEvent($context->key));
         
         $fetchStartTime = microtime(true);
-        $promise = PromiseBridge::toReact(($context->promiseFactory)());
+        
+        // We call the factory and wrap the result in our native Future
+        $sourceResult = ($context->promiseFactory)();
+        
+        // Use Deferred to bridge from whatever the factory returns (Guzzle/React/Value) to Future
+        $deferred = new Deferred();
+        
+        if (method_exists($sourceResult, 'then')) {
+            $sourceResult->then(
+                fn($v) => $deferred->resolve($v),
+                fn($r) => $deferred->reject($r)
+            );
+        } else {
+            $deferred->resolve($sourceResult);
+        }
 
-        return $promise->then(
+        return $deferred->future()->then(
             function ($data) use ($context, $fetchStartTime) {
                 $generationTime = microtime(true) - $fetchStartTime;
                 $this->storage->set($context->key, $data, $context->options, $generationTime);

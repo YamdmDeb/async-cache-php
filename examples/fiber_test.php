@@ -21,33 +21,43 @@ class SimpleMemoryCache implements \Psr\SimpleCache\CacheInterface {
 $cache = new SimpleMemoryCache();
 $manager = AsyncCacheBuilder::create($cache)->build();
 
-echo "--- Fiber (Cooperative Multitasking) Test ---
+echo "--- Pure Core Future (Honest OO) Test ---
 ";
 
-// TASK 1: Fiber-based request
+// TASK 1: Fiber task
 $main = async(function() use ($manager) {
-    echo "[Fiber] Starting non-blocking request...\n";
+    echo "[Fiber] Starting heavy cache request via internal Future...
+";
     $start = microtime(true);
     
+    // Transparently uses our own Future core
     $result = $manager->get('fiber_key', function() {
-        return \React\Promise\Timer\resolve(1.0)->then(fn() => "Honest Data");
+        return \React\Promise\Timer\resolve(1.0)->then(fn() => "Honest Future Data");
     }, new CacheOptions());
     
     echo "[Fiber] COMPLETED! Result: $result (took " . number_format(microtime(true) - $start, 2) . "s)\n";
+    return $result;
 });
 
-// TASK 2: Proof of life
+// TASK 2: Background life
 $timer = \React\EventLoop\Loop::addPeriodicTimer(0.2, function() {
-    echo "[Background] Loop is still spinning! Fibers are working correctly.\n";
+    static $ticks = 0;
+    $ticks++;
+    echo "[Background] Tick $ticks: Main thread is still spinning!
+";
 });
 
-echo "Main Thread: Starting Event Loop...\n";
+echo "Main Thread: Starting Event Loop...
+";
 
 $main()->then(function() use ($timer) {
+    echo "Main Thread: OO Fiber task finished, stopping loop.
+";
     \React\EventLoop\Loop::cancelTimer($timer);
     \React\EventLoop\Loop::stop();
 });
 
 \React\EventLoop\Loop::run();
+
 echo "--- Test Finished ---
 ";

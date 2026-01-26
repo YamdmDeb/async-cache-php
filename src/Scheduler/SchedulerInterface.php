@@ -2,25 +2,25 @@
 
 namespace Fyennyi\AsyncCache\Scheduler;
 
-use React\Promise\PromiseInterface;
+use Fyennyi\AsyncCache\Core\Future;
 
 /**
- * Interface to abstract async execution environments
+ * Interface for async task scheduling using library-native Futures
  */
 interface SchedulerInterface
 {
     /**
-     * Returns a promise that resolves after the specified delay
+     * Returns a Future that resolves after the specified delay
      */
-    public function delay(float $seconds): PromiseInterface;
+    public function delay(float $seconds): Future;
 
     /**
-     * Resolves a value into a promise native to this runtime
+     * Resolves a value into a native Future
      */
-    public function resolve(mixed $value): PromiseInterface;
+    public function resolve(mixed $value): Future;
 
     /**
-     * Detects if this runtime is supported by the current environment
+     * Detects if this scheduler is supported
      */
     public static function isSupported(): bool;
 }

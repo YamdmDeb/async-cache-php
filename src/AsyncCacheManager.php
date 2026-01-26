@@ -2,9 +2,10 @@
 
 namespace Fyennyi\AsyncCache;
 
-use Fyennyi\AsyncCache\Bridge\PromiseBridge;
+use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Pipeline;
+use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Fyennyi\AsyncCache\Lock\InMemoryLockAdapter;
 use Fyennyi\AsyncCache\Lock\LockInterface;
@@ -21,11 +22,12 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
-use React\Promise\PromiseInterface;
+use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
 use function React\Async\await;
 
 /**
- * High-performance Asynchronous Cache Manager powered by ReactPHP and Fibers
+ * Universal Asynchronous Cache Manager powered by native Futures.
+ * Independent of external promise libraries in its core.
  */
 class AsyncCacheManager
 {
@@ -47,8 +49,6 @@ class AsyncCacheManager
         $this->logger = $this->logger ?? new NullLogger();
         $this->storage = new CacheStorage($this->cache_adapter, $this->logger, $serializer);
         $this->lock_provider = $this->lock_provider ?? new InMemoryLockAdapter();
-        
-        // Pure ReactPHP by default
         $this->scheduler = $scheduler ?? new ReactScheduler();
 
         if ($this->rate_limiter === null) {
@@ -57,7 +57,7 @@ class AsyncCacheManager
 
         if (empty($middlewares)) {
             $middlewares = [
-                new CacheLookupMiddleware($this->storage, $this->logger, $this->dispatcher),
+                new CacheLookupMiddleware($this->storage, $this->scheduler, $this->logger, $this->dispatcher),
                 new AsyncLockMiddleware($this->lock_provider, $this->storage, $this->scheduler, $this->logger, $this->dispatcher),
                 new SourceFetchMiddleware($this->storage, $this->logger, $this->dispatcher)
             ];
@@ -67,42 +67,51 @@ class AsyncCacheManager
     }
 
     /**
-     * Internal async wrapping. Returns ReactPHP Promise.
+     * Internal core method. Returns native Future.
      */
-    public function wrap(string $key, callable $promise_factory, CacheOptions $options): PromiseInterface
+    public function wrapFuture(string $key, callable $promise_factory, CacheOptions $options): Future
     {
         $context = new CacheContext($key, $promise_factory, $options);
-        
         return $this->pipeline->send($context, function (CacheContext $ctx) {
-            return PromiseBridge::toReact(($ctx->promiseFactory)());
+            // Final destination: just call the source and return a Future
+            $res = ($ctx->promiseFactory)();
+            $deferred = new \Fyennyi\AsyncCache\Core\Deferred();
+            if (method_exists($res, 'then')) {
+                $res->then(fn($v) => $deferred->resolve($v), fn($r) => $deferred->reject($r));
+            } else {
+                $deferred->resolve($res);
+            }
+            return $deferred->future();
         });
     }
 
     /**
-     * Pure Fiber-based access. Looks synchronous, works asynchronously.
-     * 
-     * @return mixed The cached or fetched data
+     * Standard API: Returns a Guzzle Promise (Industry Standard)
      */
-    public function get(string $key, callable $promise_factory, CacheOptions $options): mixed
+    public function wrap(string $key, callable $promise_factory, CacheOptions $options): GuzzlePromiseInterface
     {
-        return await($this->wrap($key, $promise_factory, $options));
+        return PromiseAdapter::toGuzzle($this->wrapFuture($key, $promise_factory, $options));
     }
 
     /**
-     * Guzzle-compatible wrapper for legacy applications
+     * Modern API: Pure Fiber access.
      */
-    public function wrapGuzzle(string $key, callable $promise_factory, CacheOptions $options): \GuzzleHttp\Promise\PromiseInterface
+    public function get(string $key, callable $promise_factory, CacheOptions $options): mixed
     {
-        return PromiseBridge::toGuzzle($this->wrap($key, $promise_factory, $options));
+        $future = $this->wrapFuture($key, $promise_factory, $options);
+        
+        // Use react/async to unwrap our future by bridging it to React first
+        return await(PromiseAdapter::toReact($future));
     }
 
-    public function increment(string $key, int $step = 1, ?CacheOptions $options = null): PromiseInterface
+    /**
+     * Increment using native Futures.
+     */
+    public function increment(string $key, int $step = 1, ?CacheOptions $options = null): GuzzlePromiseInterface
     {
         $options = $options ?? new CacheOptions();
         $lockKey = 'lock:counter:' . $key;
-        
-        // Logic remains internal to ReactPHP promises
-        $deferred = new \React\Promise\Deferred();
+        $deferred = new \Fyennyi\AsyncCache\Core\Deferred();
         
         if ($this->lock_provider->acquire($lockKey, 10.0, true)) {
             $item = $this->storage->get($key, $options);
@@ -115,10 +124,10 @@ class AsyncCacheManager
             $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
         }
 
-        return $deferred->promise();
+        return PromiseAdapter::toGuzzle($deferred->future());
     }
 
-    public function decrement(string $key, int $step = 1, ?CacheOptions $options = null): PromiseInterface
+    public function decrement(string $key, int $step = 1, ?CacheOptions $options = null): GuzzlePromiseInterface
     {
         return $this->increment($key, -$step, $options);
     }
