@@ -2,7 +2,6 @@
 
 namespace Fyennyi\AsyncCache;
 
-use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
@@ -79,7 +78,7 @@ class AsyncCacheManager
     public function wrap(string $key, callable $promise_factory, CacheOptions $options) : Future
     {
         $context = new CacheContext($key, $promise_factory, $options);
-        
+
         // Execute the pipeline. The result is a Future from the last middleware.
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             $res = ($ctx->promiseFactory)();
