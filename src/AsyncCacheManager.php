@@ -89,6 +89,14 @@ class AsyncCacheManager
     }
 
     /**
+     * ReactPHP API: Returns a native ReactPHP Promise (Performance)
+     */
+    public function wrapReact(string $key, callable $promise_factory, CacheOptions $options): \React\Promise\PromiseInterface
+    {
+        return $this->wrapFuture($key, $promise_factory, $options)->toReact();
+    }
+
+    /**
      * Fiber API: Returns the result directly using Fibers (The Future)
      */
     public function get(string $key, callable $promise_factory, CacheOptions $options): mixed
