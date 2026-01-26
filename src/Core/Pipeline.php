@@ -2,7 +2,7 @@
 
 namespace Fyennyi\AsyncCache\Core;
 
-use Fyennyi\AsyncCache\CacheOptions;
+use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
 use GuzzleHttp\Promise\PromiseInterface;
 
 /**
@@ -19,23 +19,22 @@ class Pipeline
     }
 
     /**
-     * Sends the request through the pipeline
+     * Send the context through the pipeline
      */
-    public function send(string $key, callable $promise_factory, CacheOptions $options, callable $destination): PromiseInterface
+    public function send(CacheContext $context, callable $destination): PromiseInterface
     {
-        $pipeline = array_reverse($this->middlewares);
+        $pipeline = array_reduce(
+            array_reverse($this->middlewares),
+            function ($next, MiddlewareInterface $middleware) {
+                return function (CacheContext $context) use ($next, $middleware) {
+                    return $middleware->handle($context, $next);
+                };
+            },
+            function (CacheContext $context) use ($destination) {
+                return $destination($context);
+            }
+        );
 
-        $next = function (string $k, callable $f, CacheOptions $o) use ($destination) {
-            return $destination($k, $f, $o);
-        };
-
-        foreach ($pipeline as $middleware) {
-            $currentNext = $next;
-            $next = function (string $k, callable $f, CacheOptions $o) use ($middleware, $currentNext) {
-                return $middleware->handle($k, $f, $o, $currentNext);
-            };
-        }
-
-        return $next($key, $promise_factory, $options);
+        return $pipeline($context);
     }
 }
