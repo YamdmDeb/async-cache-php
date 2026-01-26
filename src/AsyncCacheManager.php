@@ -6,6 +6,7 @@ use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
 use Fyennyi\AsyncCache\Core\Pipeline;
+use Fyennyi\AsyncCache\Core\Timer;
 use Fyennyi\AsyncCache\Enum\RateLimiterType;
 use Fyennyi\AsyncCache\Lock\InMemoryLockAdapter;
 use Fyennyi\AsyncCache\Lock\LockInterface;
@@ -24,6 +25,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Psr\SimpleCache\CacheInterface;
 use function React\Async\await;
+use function React\Async\async;
 use React\Promise\PromiseInterface as ReactPromiseInterface;
 
 /**
@@ -88,17 +90,35 @@ class AsyncCacheManager
     public function wrapFuture(string $key, callable $promise_factory, CacheOptions $options) : Future
     {
         $context = new CacheContext($key, $promise_factory, $options);
-        return $this->pipeline->send($context, function (CacheContext $ctx) {
-            $res = ($ctx->promiseFactory)();
-            $deferred = new Deferred();
+        $deferred = new Deferred();
 
-            if (method_exists($res, 'then')) {
-                $res->then(fn($v) => $deferred->resolve($v), fn($r) => $deferred->reject($r));
-            } else {
-                $deferred->resolve($res);
+        async(function () use ($context, $deferred) {
+            try {
+                $future = $this->pipeline->send($context, function (CacheContext $ctx) {
+                    $res = ($ctx->promiseFactory)();
+                    $innerDeferred = new Deferred();
+
+                    if (method_exists($res, 'then')) {
+                        $res->then(
+                            fn($v) => $innerDeferred->resolve($v),
+                            fn($r) => $innerDeferred->reject($r)
+                        );
+                    } else {
+                        $innerDeferred->resolve($res);
+                    }
+                    return $innerDeferred->future();
+                });
+
+                $future->then(
+                    fn($v) => $deferred->resolve($v),
+                    fn($r) => $deferred->reject($r)
+                );
+            } catch (\Throwable $e) {
+                $deferred->reject($e);
             }
-            return $deferred->future();
-        });
+        })();
+
+        return $deferred->future();
     }
 
     /**
@@ -163,16 +183,36 @@ class AsyncCacheManager
         $lockKey = 'lock:counter:' . $key;
         $deferred = new Deferred();
 
-        if ($this->lock_provider->acquire($lockKey, 10.0, true)) {
-            $item = $this->storage->get($key, $options);
-            $currentValue = $item ? (int) $item->data : 0;
-            $newValue = $currentValue + $step;
-            $this->storage->set($key, $newValue, $options);
-            $this->lock_provider->release($lockKey);
-            $deferred->resolve($newValue);
-        } else {
-            $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
-        }
+        async(function () use ($key, $step, $options, $lockKey, $deferred) {
+            $startTime = microtime(true);
+            $timeout = 10.0;
+
+            $attempt = function () use (&$attempt, $key, $step, $options, $lockKey, $deferred, $startTime, $timeout) {
+                if ($this->lock_provider->acquire($lockKey, 10.0, false)) {
+                    try {
+                        $item = $this->storage->get($key, $options);
+                        $currentValue = $item ? (int) $item->data : 0;
+                        $newValue = $currentValue + $step;
+                        $this->storage->set($key, $newValue, $options);
+                        $this->lock_provider->release($lockKey);
+                        $deferred->resolve($newValue);
+                    } catch (\Throwable $e) {
+                        $this->lock_provider->release($lockKey);
+                        $deferred->reject($e);
+                    }
+                    return;
+                }
+
+                if (microtime(true) - $startTime >= $timeout) {
+                    $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
+                    return;
+                }
+
+                Timer::delay(0.05)->then($attempt);
+            };
+
+            $attempt();
+        })();
 
         return $deferred->future()->toGuzzle();
     }
