@@ -15,8 +15,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Core middleware for initial cache retrieval and freshness validation.
- * Supports X-Fetch (probabilistic early expiration) and background revalidation.
+ * Core middleware for initial cache retrieval and freshness validation
  */
 class CacheLookupMiddleware implements MiddlewareInterface
 {
