@@ -25,6 +25,7 @@
 
 namespace Fyennyi\AsyncCache\Middleware;
 
+use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
@@ -36,7 +37,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * The final middleware that calls the source and populates the cache using Futures
+ * The final middleware that calls the source and populates the cache asynchronously
  */
 class SourceFetchMiddleware implements MiddlewareInterface
 {
@@ -53,7 +54,7 @@ class SourceFetchMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Fetches fresh data from the source and updates cache
+     * Fetches fresh data from the source and updates cache asynchronously
      *
      * @param  CacheContext  $context  The resolution state
      * @param  callable      $next     Next handler in the chain (usually empty destination)
@@ -63,51 +64,42 @@ class SourceFetchMiddleware implements MiddlewareInterface
     {
         $this->dispatcher?->dispatch(new CacheMissEvent($context->key));
 
-        $fetchStartTime = microtime(true);
+        $fetch_start_time = microtime(true);
+        $deferred = new Deferred();
 
         try {
-            // We call the factory and wrap the result in our native Future
-            $sourceResult = ($context->promiseFactory)();
-            $sourceFuture = \Fyennyi\AsyncCache\Bridge\PromiseAdapter::toFuture($sourceResult);
+            $source_result = ($context->promiseFactory)();
+            $source_future = PromiseAdapter::toFuture($source_result);
         } catch (\Throwable $e) {
-            $deferred = new Deferred();
             $deferred->reject($e);
             return $deferred->future();
         }
 
-        // Create a new deferred for the "after-save" result
-        $finalDeferred = new Deferred();
+        $source_future->onResolve(
+            function ($data) use ($context, $fetch_start_time, $deferred) {
+                $generation_time = microtime(true) - $fetch_start_time;
 
-        $sourceFuture->onResolve(
-            function ($data) use ($context, $fetchStartTime, $finalDeferred) {
-                try {
-                    $generationTime = microtime(true) - $fetchStartTime;
-                    $this->storage->set($context->key, $data, $context->options, $generationTime);
+                // Asynchronously populate the cache
+                $this->storage->set($context->key, $data, $context->options, $generation_time);
 
-                    $this->dispatcher?->dispatch(new CacheStatusEvent(
-                        $context->key,
-                        CacheStatus::Miss,
-                        microtime(true) - $context->startTime,
-                        $context->options->tags
-                    ));
+                $this->dispatcher?->dispatch(new CacheStatusEvent(
+                    $context->key,
+                    CacheStatus::Miss,
+                    microtime(true) - $context->startTime,
+                    $context->options->tags
+                ));
 
-                    $finalDeferred->resolve($data);
-                } catch (\Throwable $e) {
-                    // If saving fails, we still might want to return the data, or log error
-                    // For now, we propagate the error if storage fails critically
-                    $finalDeferred->reject($e);
-                }
+                $deferred->resolve($data);
             },
-            function ($reason) use ($context, $finalDeferred) {
-                $this->logger->error('AsyncCache FETCH_ERROR: failed to fetch fresh data', [
+            function ($reason) use ($context, $deferred) {
+                $this->logger->error('AsyncCache FETCH_ERROR', [
                     'key' => $context->key,
-                    'reason' => $reason
+                    'reason' => $reason instanceof \Throwable ? $reason->getMessage() : (string)$reason
                 ]);
-
-                $finalDeferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
+                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
             }
         );
 
-        return $finalDeferred->future();
+        return $deferred->future();
     }
 }

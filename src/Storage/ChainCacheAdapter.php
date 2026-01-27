@@ -25,150 +25,204 @@
 
 namespace Fyennyi\AsyncCache\Storage;
 
-use Psr\SimpleCache\CacheInterface;
+use Fyennyi\AsyncCache\Core\Deferred;
+use Fyennyi\AsyncCache\Core\Future;
+use Psr\SimpleCache\CacheInterface as PsrCacheInterface;
+use React\Cache\CacheInterface as ReactCacheInterface;
 
 /**
- * PSR-16 adapter that chains multiple cache layers
+ * Asynchronous adapter that chains multiple cache layers (L1, L2, L3...)
  */
-class ChainCacheAdapter implements CacheInterface
+class ChainCacheAdapter implements AsyncCacheAdapterInterface
 {
+    /** @var AsyncCacheAdapterInterface[] Ordered list of asynchronous adapters */
+    private array $adapters = [];
+
     /**
-     * @param CacheInterface[] $adapters Ordered list of adapters (L1, L2, L3...)
+     * @param  array  $adapters  Ordered list of adapters (Psr, React or Async)
      */
-    public function __construct(
-        private array $adapters
-    ) {
+    public function __construct(array $adapters)
+    {
+        foreach ($adapters as $adapter) {
+            if ($adapter instanceof AsyncCacheAdapterInterface) {
+                $this->adapters[] = $adapter;
+            } elseif ($adapter instanceof PsrCacheInterface) {
+                $this->adapters[] = new PsrToAsyncAdapter($adapter);
+            } elseif ($adapter instanceof ReactCacheInterface) {
+                $this->adapters[] = new ReactCacheAdapter($adapter);
+            }
+        }
     }
 
     /**
-     * Retrieves an item from the first adapter that has it
+     * Retrieves an item from the first layer that has it, then backfills upper layers
      *
-     * @param  string  $key      Cache key
-     * @param  mixed   $default  Default value if not found in any layer
-     * @return mixed             Found value or default
+     * @param  string  $key  The unique key of this item in the cache
+     * @return Future        Resolves to the cached value or null on miss
      */
-    public function get(string $key, mixed $default = null) : mixed
+    public function get(string $key) : Future
     {
-        foreach ($this->adapters as $index => $adapter) {
-            $value = $adapter->get($key);
-            if ($value !== null) {
-                // Backfill: populate faster layers above this one
-                for ($i = 0; $i < $index; $i++) {
-                    $this->adapters[$i]->set($key, $value);
+        $deferred = new Deferred();
+        $this->resolveLayer($key, 0, $deferred);
+        return $deferred->future();
+    }
+
+    /**
+     * Recursive resolution of cache layers with asynchronous backfilling
+     *
+     * @param  string    $key       Cache key to find
+     * @param  int       $index     Current layer index in the adapters array
+     * @param  Deferred  $deferred  The original deferred to resolve when found
+     * @return void
+     */
+    private function resolveLayer(string $key, int $index, Deferred $deferred) : void
+    {
+        if (! isset($this->adapters[$index])) {
+            $deferred->resolve(null);
+            return;
+        }
+
+        $this->adapters[$index]->get($key)->onResolve(
+            function ($value) use ($key, $index, $deferred) {
+                if ($value !== null) {
+                    // Backfill: populate all faster layers above this one asynchronously
+                    for ($i = 0; $i < $index; $i++) {
+                        $this->adapters[$i]->set($key, $value);
+                    }
+                    $deferred->resolve($value);
+                    return;
                 }
-                return $value;
+
+                // Try next layer in the hierarchy
+                $this->resolveLayer($key, $index + 1, $deferred);
+            },
+            function () use ($key, $index, $deferred) {
+                // If a layer fails critically, we still attempt the next one for resilience
+                $this->resolveLayer($key, $index + 1, $deferred);
             }
-        }
-
-        return $default;
+        );
     }
 
     /**
-     * Stores an item across all cache layers
+     * Obtains multiple cache items by their unique keys
      *
-     * @param  string                  $key    Cache key
-     * @param  mixed                   $value  Value to store
-     * @param  null|int|\DateInterval  $ttl    Optional TTL
-     * @return bool                            True if all adapters succeeded
+     * @param  iterable  $keys  A list of keys that can be obtained in a single operation
+     * @return Future           Resolves to an array of key => value pairs
      */
-    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null) : bool
+    public function getMultiple(iterable $keys) : Future
     {
-        $success = true;
+        $deferred = new Deferred();
+        $results = [];
+        $keys_array = is_array($keys) ? $keys : iterator_to_array($keys);
+        $total_keys = count($keys_array);
+
+        if ($total_keys === 0) {
+            $deferred->resolve([]);
+            return $deferred->future();
+        }
+
+        $processed_count = 0;
+        foreach ($keys_array as $key) {
+            $this->get($key)->onResolve(function ($value) use ($key, &$results, &$processed_count, $total_keys, $deferred) {
+                $results[$key] = $value;
+                $processed_count++;
+                if ($processed_count === total_keys) {
+                    $deferred->resolve($results);
+                }
+            });
+        }
+
+        return $deferred->future();
+    }
+
+    /**
+     * Persists data in all cache layers concurrently
+     *
+     * @param  string    $key    The key of the item to store
+     * @param  mixed     $value  The value of the item to store
+     * @param  int|null  $ttl    Optional. The TTL value of this item
+     * @return Future            Resolves to true on success and false on failure
+     */
+    public function set(string $key, mixed $value, ?int $ttl = null) : Future
+    {
+        $deferred = new Deferred();
+        $total_adapters = count($this->adapters);
+
+        if ($total_adapters === 0) {
+            $deferred->resolve(true);
+            return $deferred->future();
+        }
+
+        $resolved_count = 0;
+        $all_success = true;
+
         foreach ($this->adapters as $adapter) {
-            $success = $adapter->set($key, $value, $ttl) && $success;
+            $adapter->set($key, $value, $ttl)->onResolve(function ($res) use (&$resolved_count, $total_adapters, $deferred, &$all_success) {
+                $resolved_count++;
+                $all_success = $res && $all_success;
+                if ($resolved_count === $total_adapters) {
+                    $deferred->resolve($all_success);
+                }
+            });
         }
-        return $success;
+
+        return $deferred->future();
     }
 
     /**
-     * Removes an item from all cache layers
+     * Deletes an item from all cache layers concurrently
      *
-     * @param  string  $key  Cache key
-     * @return bool          True if all adapters succeeded
+     * @param  string  $key  The unique cache key of the item to delete
+     * @return Future        Resolves to true on success and false on failure
      */
-    public function delete(string $key) : bool
+    public function delete(string $key) : Future
     {
-        $success = true;
+        $deferred = new Deferred();
+        $total_adapters = count($this->adapters);
+
+        if ($total_adapters === 0) {
+            $deferred->resolve(true);
+            return $deferred->future();
+        }
+
+        $resolved_count = 0;
         foreach ($this->adapters as $adapter) {
-            $success = $adapter->delete($key) && $success;
+            $adapter->delete($key)->onResolve(function () use (&$resolved_count, $total_adapters, $deferred) {
+                $resolved_count++;
+                if ($resolved_count === $total_adapters) {
+                    $deferred->resolve(true);
+                }
+            });
         }
-        return $success;
+
+        return $deferred->future();
     }
 
     /**
-     * Clears all cache layers
+     * Wipes clean all cache layers concurrently
      *
-     * @return bool True if all adapters succeeded
+     * @return Future  Resolves to true on success and false on failure
      */
-    public function clear() : bool
+    public function clear() : Future
     {
-        $success = true;
+        $deferred = new Deferred();
+        $total_adapters = count($this->adapters);
+
+        if ($total_adapters === 0) {
+            $deferred->resolve(true);
+            return $deferred->future();
+        }
+
+        $resolved_count = 0;
         foreach ($this->adapters as $adapter) {
-            $success = $adapter->clear() && $success;
+            $adapter->clear()->onResolve(function () use (&$resolved_count, $total_adapters, $deferred) {
+                $resolved_count++;
+                if ($resolved_count === $total_adapters) {
+                    $deferred->resolve(true);
+                }
+            });
         }
-        return $success;
-    }
 
-    /**
-     * Checks if an item exists in any cache layer
-     *
-     * @param  string  $key  Cache key
-     * @return bool
-     */
-    public function has(string $key) : bool
-    {
-        foreach ($this->adapters as $adapter) {
-            if ($adapter->has($key)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Retrieves multiple items from the chain
-     *
-     * @param  iterable  $keys     List of keys
-     * @param  mixed     $default  Default value
-     * @return iterable            Map of key => value
-     */
-    public function getMultiple(iterable $keys, mixed $default = null) : iterable
-    {
-        $result = [];
-        foreach ($keys as $key) {
-            $result[$key] = $this->get($key, $default);
-        }
-        return $result;
-    }
-
-    /**
-     * Stores multiple items across all cache layers
-     *
-     * @param  iterable                $values  Map of key => value
-     * @param  null|int|\DateInterval  $ttl     Optional TTL
-     * @return bool                             True if all succeeded
-     */
-    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null) : bool
-    {
-        $success = true;
-        foreach ($values as $key => $value) {
-            $success = $this->set($key, $value, $ttl) && $success;
-        }
-        return $success;
-    }
-
-    /**
-     * Removes multiple items from all cache layers
-     *
-     * @param  iterable  $keys  List of keys
-     * @return bool             True if all succeeded
-     */
-    public function deleteMultiple(iterable $keys) : bool
-    {
-        $success = true;
-        foreach ($keys as $key) {
-            $success = $this->delete($key) && $success;
-        }
-        return $success;
+        return $deferred->future();
     }
 }

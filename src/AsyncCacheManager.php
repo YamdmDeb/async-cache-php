@@ -1,13 +1,13 @@
 <?php
 
 /*
- *
+ * 
  *     _                          ____           _            ____  _   _ ____
  *    / \   ___ _   _ _ __   ___ / ___|__ _  ___| |__   ___  |  _ \| | | |  _ \
  *   / _ \ / __| | | | '_ \ / __| |   / _` |/ __| '_ \ / _ \ | |_) | |_| | |_) |
  *  / ___ \\__ \ |_| | | | | (__| |__| (_| | (__| | | |  __/ |  __/|  _  |  __/
- * /_/   \_\___/\__, |_| |_|\___|\____\__,_|\___|_| |_|\___| |_|   |_| |_|_|
- *              |___/
+ * /_/   \_\___/\__, |_| |_|\___|\____\__,_|\___|_| |_|\___| |_|   |_| |_|_| 
+ *              |___/ 
  *
  * This program is free software: you can redistribute and/or modify
  * it under the terms of the CSSM Unlimited License v2.0.
@@ -25,6 +25,7 @@
 
 namespace Fyennyi\AsyncCache;
 
+use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
@@ -36,11 +37,15 @@ use Fyennyi\AsyncCache\Middleware\CoalesceMiddleware;
 use Fyennyi\AsyncCache\Middleware\SourceFetchMiddleware;
 use Fyennyi\AsyncCache\Middleware\StaleOnErrorMiddleware;
 use Fyennyi\AsyncCache\Serializer\SerializerInterface;
+use Fyennyi\AsyncCache\Storage\AsyncCacheAdapterInterface;
 use Fyennyi\AsyncCache\Storage\CacheStorage;
+use Fyennyi\AsyncCache\Storage\PsrToAsyncAdapter;
+use Fyennyi\AsyncCache\Storage\ReactCacheAdapter;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use Psr\SimpleCache\CacheInterface;
+use Psr\SimpleCache\CacheInterface as PsrCacheInterface;
+use React\Cache\CacheInterface as ReactCacheInterface;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\SemaphoreStore;
 use Symfony\Component\RateLimiter\LimiterInterface;
@@ -54,16 +59,16 @@ class AsyncCacheManager
     private CacheStorage $storage;
 
     /**
-     * @param  CacheInterface                 $cache_adapter  The PSR-16 cache implementation
-     * @param  LimiterInterface|null          $rate_limiter   The Symfony Rate Limiter implementation
-     * @param  LoggerInterface|null           $logger         The PSR-3 logger implementation
-     * @param  LockFactory|null               $lock_factory   The Symfony Lock Factory
-     * @param  array                          $middlewares    Optional custom middleware stack
-     * @param  EventDispatcherInterface|null  $dispatcher     The PSR-14 event dispatcher
-     * @param  SerializerInterface|null       $serializer     The custom serializer
+     * @param  PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface  $cache_adapter  The cache implementation
+     * @param  LimiterInterface|null                                             $rate_limiter   The Symfony Rate Limiter implementation
+     * @param  LoggerInterface|null                                              $logger         The PSR-3 logger implementation
+     * @param  LockFactory|null                                                  $lock_factory   The Symfony Lock Factory
+     * @param  array                                                             $middlewares    Optional custom middleware stack
+     * @param  EventDispatcherInterface|null                                     $dispatcher     The PSR-14 event dispatcher
+     * @param  SerializerInterface|null                                          $serializer     The custom serializer
      */
     public function __construct(
-        private CacheInterface $cache_adapter,
+        PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter,
         private ?LimiterInterface $rate_limiter = null,
         private ?LoggerInterface $logger = null,
         private ?LockFactory $lock_factory = null,
@@ -72,7 +77,15 @@ class AsyncCacheManager
         ?SerializerInterface $serializer = null
     ) {
         $this->logger = $this->logger ?? new NullLogger();
-        $this->storage = new CacheStorage($this->cache_adapter, $this->logger, $serializer);
+
+        // Auto-detect and wrap the adapter type for full async support
+        if ($cache_adapter instanceof PsrCacheInterface) {
+            $cache_adapter = new PsrToAsyncAdapter($cache_adapter);
+        } elseif ($cache_adapter instanceof ReactCacheInterface) {
+            $cache_adapter = new ReactCacheAdapter($cache_adapter);
+        }
+
+        $this->storage = new CacheStorage($cache_adapter, $this->logger, $serializer);
         $this->lock_factory = $this->lock_factory ?? new LockFactory(new SemaphoreStore());
 
         if (empty($middlewares)) {
@@ -106,7 +119,7 @@ class AsyncCacheManager
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             try {
                 $res = ($ctx->promiseFactory)();
-                return \Fyennyi\AsyncCache\Bridge\PromiseAdapter::toFuture($res);
+                return PromiseAdapter::toFuture($res);
             } catch (\Throwable $e) {
                 $deferred = new Deferred();
                 $deferred->reject($e);
@@ -126,38 +139,51 @@ class AsyncCacheManager
     public function increment(string $key, int $step = 1, ?CacheOptions $options = null) : Future
     {
         $options = $options ?? new CacheOptions();
-        $lockKey = 'lock:counter:' . $key;
+        $lock_key = 'lock:counter:' . $key;
         $deferred = new Deferred();
 
-        $startTime = microtime(true);
+        $start_time = microtime(true);
         $timeout = 10.0;
 
-        $attempt = function () use (&$attempt, $key, $step, $options, $lockKey, $deferred, $startTime, $timeout) {
-            $lock = $this->lock_factory->createLock($lockKey, 10.0);
+        $attempt = function () use (&$attempt, $key, $step, $options, $lock_key, $deferred, $start_time, $timeout) {
+            $lock = $this->lock_factory->createLock($lock_key, 10.0);
 
             if ($lock->acquire(false)) {
-                try {
-                    $item = $this->storage->get($key, $options);
-                    $currentValue = $item ? (int) $item->data : 0;
-                    $newValue = $currentValue + $step;
-                    $this->storage->set($key, $newValue, $options);
-                    $lock->release();
-                    $deferred->resolve($newValue);
-                } catch (\Throwable $e) {
-                    $lock->release();
-                    $deferred->reject($e);
-                }
+                $this->storage->get($key, $options)->onResolve(
+                    function ($item) use ($key, $step, $options, $lock, $deferred) {
+                        try {
+                            $current_value = $item ? (int) $item->data : 0;
+                            $new_value = $current_value + $step;
+
+                            $this->storage->set($key, $new_value, $options)->onResolve(
+                                function () use ($lock, $deferred, $new_value) {
+                                    $lock->release();
+                                    $deferred->resolve($new_value);
+                                },
+                                function ($e) use ($lock, $deferred) {
+                                    $lock->release();
+                                    $deferred->reject($e);
+                                }
+                            );
+                        } catch (\Throwable $e) {
+                            $lock->release();
+                            $deferred->reject($e);
+                        }
+                    },
+                    function ($e) use ($lock, $deferred) {
+                        $lock->release();
+                        $deferred->reject($e);
+                    }
+                );
                 return;
             }
 
-            if (microtime(true) - $startTime >= $timeout) {
+            if (microtime(true) - $start_time >= $timeout) {
                 $deferred->reject(new \RuntimeException("Could not acquire lock for incrementing key: $key"));
                 return;
             }
 
-            Timer::delay(0.05)->onResolve(function() use ($attempt) {
-                $attempt();
-            });
+            Timer::delay(0.05)->onResolve($attempt);
         };
 
         $attempt();
@@ -182,32 +208,32 @@ class AsyncCacheManager
      * Invalidates all cache entries associated with the given tags
      *
      * @param  array  $tags  List of tags to invalidate
-     * @return void
+     * @return Future        Resolves to true on success
      */
-    public function invalidateTags(array $tags) : void
+    public function invalidateTags(array $tags) : Future
     {
-        $this->storage->invalidateTags($tags);
+        return $this->storage->invalidateTags($tags);
     }
 
     /**
      * Clears the entire cache storage
      *
-     * @return bool True on success, false on failure
+     * @return Future  Resolves to true on success
      */
-    public function clear() : bool
+    public function clear() : Future
     {
-        return $this->cache_adapter->clear();
+        return $this->storage->clear();
     }
 
     /**
      * Deletes a specific item from the cache
      *
      * @param  string  $key  Item identifier
-     * @return bool          True on success, false on failure
+     * @return Future        Resolves to true on success
      */
-    public function delete(string $key) : bool
+    public function delete(string $key) : Future
     {
-        return $this->cache_adapter->delete($key);
+        return $this->storage->delete($key);
     }
 
     /**

@@ -34,7 +34,7 @@ use Fyennyi\AsyncCache\Core\Future;
 class CoalesceMiddleware implements MiddlewareInterface
 {
     /** @var array<string, Future> Tracks currently in-flight futures by key */
-    private static array $inFlight = [];
+    private static array $in_flight = [];
 
     /**
      * @param  CacheContext  $context  The resolution state
@@ -45,20 +45,20 @@ class CoalesceMiddleware implements MiddlewareInterface
     {
         $key = $context->key;
 
-        if (isset(self::$inFlight[$key])) {
-            return self::$inFlight[$key];
+        if (isset(self::$in_flight[$key])) {
+            return self::$in_flight[$key];
         }
 
         $future = $next($context);
-        self::$inFlight[$key] = $future;
+        self::$in_flight[$key] = $future;
 
         // Clean up when the operation completes (success or failure)
         $future->onResolve(
             function () use ($key) {
-                unset(self::$inFlight[$key]);
+                unset(self::$in_flight[$key]);
             },
             function () use ($key) {
-                unset(self::$inFlight[$key]);
+                unset(self::$in_flight[$key]);
             }
         );
 

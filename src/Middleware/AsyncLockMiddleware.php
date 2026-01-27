@@ -45,7 +45,7 @@ use Symfony\Component\Lock\LockInterface;
 class AsyncLockMiddleware implements MiddlewareInterface
 {
     /** @var array<string, LockInterface> Active locks storage */
-    private array $activeLocks = [];
+    private array $active_locks = [];
 
     /**
      * @param  LockFactory                    $lock_factory  Symfony Lock Factory
@@ -74,7 +74,7 @@ class AsyncLockMiddleware implements MiddlewareInterface
         $lock = $this->lock_factory->createLock($lock_key, 30.0);
 
         if ($lock->acquire(false)) {
-            $this->activeLocks[$lock_key] = $lock;
+            $this->active_locks[$lock_key] = $lock;
             return $this->handleWithLock($context, $next, $lock_key);
         }
 
@@ -88,35 +88,43 @@ class AsyncLockMiddleware implements MiddlewareInterface
 
         $this->logger->debug('AsyncCache LOCK_BUSY: waiting for lock asynchronously', ['key' => $context->key]);
 
-        $startTime = microtime(true);
+        $start_time = microtime(true);
         $timeout = 10.0;
 
         // Create a master deferred that will eventually hold the result of the successful attempt
-        $masterDeferred = new Deferred();
+        $master_deferred = new Deferred();
 
-        $attempt = function () use (&$attempt, $context, $next, $lock_key, $startTime, $timeout, $masterDeferred) {
+        $attempt = function () use (&$attempt, $context, $next, $lock_key, $start_time, $timeout, $master_deferred) {
             $lock = $this->lock_factory->createLock($lock_key, 30.0);
 
             if ($lock->acquire(false)) {
-                $this->activeLocks[$lock_key] = $lock;
-                $cached_item = $this->storage->get($context->key, $context->options);
-                if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
-                    $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, microtime(true) - $startTime, $context->options->tags));
-                    $this->releaseLock($lock_key);
-                    $masterDeferred->resolve($cached_item->data);
-                    return;
-                }
+                $this->active_locks[$lock_key] = $lock;
 
-                // If acquired but no fresh cache, fetch via next middleware
-                $this->handleWithLock($context, $next, $lock_key)->onResolve(
-                    fn($v) => $masterDeferred->resolve($v),
-                    fn($e) => $masterDeferred->reject($e)
+                $this->storage->get($context->key, $context->options)->onResolve(
+                    function ($cached_item) use ($context, $next, $lock_key, $start_time, $master_deferred) {
+                        if ($cached_item instanceof CachedItem && $cached_item->isFresh()) {
+                            $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, microtime(true) - $start_time, $context->options->tags));
+                            $this->releaseLock($lock_key);
+                            $master_deferred->resolve($cached_item->data);
+                            return;
+                        }
+
+                        // If acquired but no fresh cache, fetch via next middleware
+                        $this->handleWithLock($context, $next, $lock_key)->onResolve(
+                            fn($v) => $master_deferred->resolve($v),
+                            fn($e) => $master_deferred->reject($e)
+                        );
+                    },
+                    function ($e) use ($lock_key, $master_deferred) {
+                        $this->releaseLock($lock_key);
+                        $master_deferred->reject($e);
+                    }
                 );
                 return;
             }
 
-            if (microtime(true) - $startTime >= $timeout) {
-                $masterDeferred->reject(new \RuntimeException("Could not acquire lock for key: {$context->key} (Timeout)"));
+            if (microtime(true) - $start_time >= $timeout) {
+                $master_deferred->reject(new \RuntimeException("Could not acquire lock for key: {$context->key} (Timeout)"));
                 return;
             }
 
@@ -128,7 +136,7 @@ class AsyncLockMiddleware implements MiddlewareInterface
 
         $attempt();
 
-        return $masterDeferred->future();
+        return $master_deferred->future();
     }
 
     /**
@@ -165,9 +173,9 @@ class AsyncLockMiddleware implements MiddlewareInterface
      */
     private function releaseLock(string $lock_key) : void
     {
-        if (isset($this->activeLocks[$lock_key])) {
-            $this->activeLocks[$lock_key]->release();
-            unset($this->activeLocks[$lock_key]);
+        if (isset($this->active_locks[$lock_key])) {
+            $this->active_locks[$lock_key]->release();
+            unset($this->active_locks[$lock_key]);
         }
     }
 }
