@@ -45,28 +45,13 @@ class SourceFetchMiddleware implements MiddlewareInterface
         // We call the factory and wrap the result in our native Future
         $sourceResult = ($context->promiseFactory)();
 
-        // Use Deferred to bridge from whatever the factory returns (Guzzle/React/Value/Future) to our Future
-        $sourceDeferred = new Deferred();
-
-        if ($sourceResult instanceof Future) {
-            $sourceResult->onResolve(
-                fn($v) => $sourceDeferred->resolve($v),
-                fn($r) => $sourceDeferred->reject($r)
-            );
-        } elseif (is_object($sourceResult) && method_exists($sourceResult, 'then')) {
-            // Support Guzzle/React promises via duck typing
-            $sourceResult->then(
-                fn($v) => $sourceDeferred->resolve($v),
-                fn($r) => $sourceDeferred->reject($r)
-            );
-        } else {
-            $sourceDeferred->resolve($sourceResult);
-        }
+        // Use Adapter to bridge from whatever the factory returns (Guzzle/React/Value/Future) to our Future
+        $sourceFuture = \Fyennyi\AsyncCache\Bridge\PromiseAdapter::toFuture($sourceResult);
 
         // Create a new deferred for the "after-save" result
         $finalDeferred = new Deferred();
 
-        $sourceDeferred->future()->onResolve(
+        $sourceFuture->onResolve(
             function ($data) use ($context, $fetchStartTime, $finalDeferred) {
                 try {
                     $generationTime = microtime(true) - $fetchStartTime;
