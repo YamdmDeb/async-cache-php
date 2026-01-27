@@ -118,7 +118,7 @@ class AsyncCacheBuilder
      * Sets the PSR-14 event dispatcher
      *
      * @param  EventDispatcherInterface  $dispatcher  Dispatcher implementation
-     * @return self                                    Current builder instance
+     * @return self                                   Current builder instance
      */
     public function withEventDispatcher(EventDispatcherInterface $dispatcher) : self
     {
@@ -141,7 +141,7 @@ class AsyncCacheBuilder
     /**
      * Finalizes the configuration and creates the AsyncCacheManager
      *
-     * @return AsyncCacheManager  Fully configured manager instance
+     * @return AsyncCacheManager Fully configured manager instance
      */
     public function build() : AsyncCacheManager
     {

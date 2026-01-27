@@ -67,7 +67,7 @@ class CacheStorage
         $deferred = new Deferred();
 
         $this->adapter->get($key)->onResolve(
-            function ($cached_item) use ($key, $options, $deferred) {
+            function ($cached_item) use ($key, $deferred) {
                 if ($cached_item === null) {
                     $deferred->resolve(null);
                     return;
@@ -75,7 +75,8 @@ class CacheStorage
 
                 // Handle backward compatibility (old array format)
                 if (is_array($cached_item) && array_key_exists('d', $cached_item) && array_key_exists('e', $cached_item)) {
-                    $cached_item = new CachedItem($cached_item['d'], $cached_item['e']);
+                    $e = $cached_item['e'];
+                    $cached_item = new CachedItem($cached_item['d'], is_numeric($e) ? (int)$e : 0);
                 }
 
                 if (! $cached_item instanceof CachedItem) {
@@ -85,8 +86,13 @@ class CacheStorage
 
                 // Tag Validation
                 if (! empty($cached_item->tag_versions)) {
-                    $this->getTagVersions(array_keys($cached_item->tag_versions))->onResolve(
+                    $tags = array_map('strval', array_keys($cached_item->tag_versions));
+                    $this->getTagVersions($tags)->onResolve(
                         function ($current_versions) use ($key, $cached_item, $deferred) {
+                            if (!is_array($current_versions)) {
+                                $deferred->resolve(null);
+                                return;
+                            }
                             foreach ($cached_item->tag_versions as $tag => $saved_version) {
                                 if (($current_versions[$tag] ?? null) !== $saved_version) {
                                     $this->logger->debug('AsyncCache TAG_INVALID', ['key' => $key, 'tag' => $tag]);
@@ -105,7 +111,8 @@ class CacheStorage
             },
             function ($e) use ($key, $options, $deferred) {
                 if ($options->fail_safe) {
-                    $this->logger->error('AsyncCache CACHE_GET_ERROR', ['key' => $key, 'error' => $e->getMessage()]);
+                    $msg = $e instanceof \Throwable ? $e->getMessage() : (\is_scalar($e) || $e instanceof \Stringable ? (string)$e : 'Unknown error');
+                    $this->logger->error('AsyncCache CACHE_GET_ERROR', ['key' => $key, 'error' => $msg]);
                     $deferred->resolve(null);
                     return;
                 }
@@ -131,8 +138,9 @@ class CacheStorage
         $logical_ttl = $options->ttl;
         $physical_ttl = $logical_ttl + $options->stale_grace_period;
 
-        $on_tags_ready = function (array $tag_versions) use ($key, $data, $options, $generation_time, $physical_ttl, $deferred) {
+        $on_tags_ready = function (mixed $tag_versions) use ($key, $data, $options, $generation_time, $physical_ttl, $deferred) {
             try {
+                /** @var array<string> $tag_versions */
                 $is_compressed = false;
                 if ($options->compression) {
                     $serialized_data = $this->serializer->serialize($data);
@@ -171,12 +179,12 @@ class CacheStorage
         return $deferred->future();
     }
 
-    /**
-     * Invalidates specific tags asynchronously
-     *
-     * @param  array  $tags  List of tags to invalidate
-     * @return Future        Resolves to true on success
-     */
+     /**
+      * Invalidates specific tags asynchronously
+      *
+      * @param  string[]  $tags  List of tags to invalidate
+      * @return Future           Resolves to true on success
+      */
     public function invalidateTags(array $tags) : Future
     {
         $deferred = new Deferred();
@@ -228,13 +236,13 @@ class CacheStorage
         return $cached_item;
     }
 
-    /**
-     * Fetches current versions for a set of tags asynchronously
-     *
-     * @param  array  $tags            List of tags to fetch
-     * @param  bool   $create_missing  Whether to initialize missing tags with a new version
-     * @return Future                  Resolves to an array of tag => version pairs
-     */
+     /**
+      * Fetches current versions for a set of tags asynchronously
+      *
+      * @param  string[]  $tags            List of tags to fetch
+      * @param  bool      $create_missing  Whether to initialize missing tags with a new version
+      * @return Future                     Resolves to an array of tag => version pairs
+      */
     private function getTagVersions(array $tags, bool $create_missing = false) : Future
     {
         $deferred = new Deferred();
@@ -248,6 +256,7 @@ class CacheStorage
         $this->adapter->getMultiple($keys)->onResolve(function ($raw_versions) use ($tags, $create_missing, $deferred) {
             $versions = [];
             $set_futures = [];
+            $raw_versions = is_array($raw_versions) ? $raw_versions : [];
 
             foreach ($tags as $tag) {
                 $version = $raw_versions[self::TAG_PREFIX . $tag] ?? null;
@@ -255,7 +264,7 @@ class CacheStorage
                     $version = $this->generateVersion();
                     $set_futures[] = $this->adapter->set(self::TAG_PREFIX . $tag, $version, 86400 * 30);
                 }
-                $versions[$tag] = (string) $version;
+                $versions[$tag] = (\is_scalar($version) || $version instanceof \Stringable) ? (string) $version : '';
             }
 
             if (empty($set_futures)) {

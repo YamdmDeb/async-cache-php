@@ -55,6 +55,8 @@ class PsrToAsyncAdapter implements AsyncCacheAdapterInterface
 
     /**
      * @inheritDoc
+     *
+     * @param  iterable<string>  $keys
      */
     public function getMultiple(iterable $keys) : Future
     {

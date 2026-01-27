@@ -40,12 +40,12 @@ interface AsyncCacheAdapterInterface
      */
     public function get(string $key) : Future;
 
-    /**
-     * Obtains multiple cache items by their unique keys
-     *
-     * @param  iterable  $keys  A list of keys that can be obtained in a single operation
-     * @return Future           Resolves to an array of key => value pairs
-     */
+     /**
+      * Obtains multiple cache items by their unique keys
+      *
+      * @param  iterable<string>  $keys  A list of keys that can be obtained in a single operation
+      * @return Future            Resolves to an array of key => value pairs
+      */
     public function getMultiple(iterable $keys) : Future;
 
     /**
@@ -69,7 +69,7 @@ interface AsyncCacheAdapterInterface
     /**
      * Wipes clean the entire cache's keys
      *
-     * @return Future  Resolves to true on success and false on failure
+     * @return Future Resolves to true on success and false on failure
      */
     public function clear() : Future;
 }

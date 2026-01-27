@@ -42,7 +42,7 @@ class CacheOptions
      * @param  bool           $fail_safe               If true, catch cache adapter exceptions and treat as misses
      * @param  float          $x_fetch_beta            Beta coefficient for X-Fetch algorithm (0 to disable)
      * @param  string|null    $rate_limit_key          Key for rate limiting grouping (e.g. 'alerts_api')
-     * @param  array          $tags                    Tags for cache invalidation (if supported by cache adapter)
+     * @param  string[]       $tags                    Tags for cache invalidation (if supported by cache adapter)
      */
     public function __construct(
         public ?int $ttl = 3600,

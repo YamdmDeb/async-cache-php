@@ -56,15 +56,22 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
         $this->process = new Process("php " . escapeshellarg($this->worker_script));
         $this->process->start();
 
+        if ($this->process->stdout === null) {
+            throw new \RuntimeException("Failed to access worker stdout");
+        }
+
         $this->process->stdout->on('data', function ($chunk) {
-            $this->buffer .= $chunk;
+            $this->buffer .= \is_scalar($chunk) || $chunk instanceof \Stringable ? (string)$chunk : '';
             while (($pos = strpos($this->buffer, "\n")) !== false) {
                 $line = substr($this->buffer, 0, $pos);
                 $this->buffer = substr($this->buffer, $pos + 1);
-                $this->handle_response(json_decode($line, true));
+                /** @var array<mixed>|null $decoded */
+                $decoded = json_decode($line, true);
+                $this->handle_response($decoded);
             }
         });
 
+        if ($this->process === null) return;
         $this->process->on('exit', function() {
             $this->process = null;
             // Auto-restart after a delay
@@ -74,26 +81,31 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
 
     /**
      * Routes the response from worker to the correct Deferred
+     *
+     * @param  array<mixed>|null  $response
      */
     private function handle_response(?array $response) : void
     {
         if ($response === null || !isset($response['id'])) return;
 
-        $id = $response['id'];
+        $id = \is_scalar($response['id']) ? (string)$response['id'] : '';
         if (isset($this->pending_requests[$id])) {
             $deferred = $this->pending_requests[$id];
             unset($this->pending_requests[$id]);
 
-            if (isset($response['error']) && $response['error'] !== null) {
-                $deferred->reject(new \RuntimeException($response['error']));
+            if (isset($response['error'])) {
+                $err = $response['error'];
+                $deferred->reject(new \RuntimeException(\is_scalar($err) ? (string)$err : 'Unknown worker error'));
             } else {
-                $deferred->resolve($response['result']);
+                $deferred->resolve($response['result'] ?? null);
             }
         }
     }
 
     /**
      * Sends a command to the worker and returns a Future
+     *
+     * @param  array<string, mixed>  $args
      */
     private function send_command(string $cmd, array $args = []) : Future
     {
@@ -103,7 +115,7 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
 
         $payload = json_encode(['id' => $id, 'cmd' => $cmd, 'args' => $args]) . "\n";
 
-        if ($this->process && $this->process->stdin->isWritable()) {
+        if ($this->process && $this->process->stdin instanceof \React\Stream\WritableStreamInterface && $this->process->stdin->isWritable()) {
             $this->process->stdin->write($payload);
         } else {
             $deferred->reject(new \RuntimeException("Worker process is not available"));
@@ -122,7 +134,7 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
             function($data) use ($deferred) {
                 try {
                     // Result is always a serialized string (or null)
-                    $deferred->resolve($data !== null ? unserialize((string)$data) : null);
+                    $deferred->resolve(\is_string($data) ? unserialize($data) : null);
                 } catch (\Throwable $e) {
                     $deferred->reject($e);
                 }
@@ -134,6 +146,8 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
 
     /**
      * @inheritDoc
+     *
+     * @param  iterable<string>  $keys
      */
     public function getMultiple(iterable $keys) : Future
     {
@@ -142,8 +156,10 @@ class NonBlockingPsrAdapter implements AsyncCacheAdapterInterface
             function($data) use ($deferred) {
                 try {
                     $results = [];
-                    foreach ($data as $key => $val) {
-                        $results[$key] = $val !== null ? unserialize((string)$val) : null;
+                    if (is_array($data)) {
+                        foreach ($data as $key => $val) {
+                            $results[$key] = \is_string($val) ? unserialize($val) : null;
+                        }
                     }
                     $deferred->resolve($results);
                 } catch (\Throwable $e) {

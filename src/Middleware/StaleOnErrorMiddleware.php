@@ -39,15 +39,17 @@ use Psr\Log\NullLogger;
  */
 class StaleOnErrorMiddleware implements MiddlewareInterface
 {
+    private LoggerInterface $logger;
+
     /**
      * @param  LoggerInterface|null           $logger      Logger for reporting failures
      * @param  EventDispatcherInterface|null  $dispatcher  Dispatcher for telemetry events
      */
     public function __construct(
-        private ?LoggerInterface $logger = null,
+        ?LoggerInterface $logger = null,
         private ?EventDispatcherInterface $dispatcher = null
     ) {
-        $this->logger = $this->logger ?? new NullLogger();
+        $this->logger = $logger ?? new NullLogger();
     }
 
     /**
@@ -61,15 +63,19 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
     {
         $deferred = new Deferred();
 
-        $next($context)->onResolve(
+        /** @var Future $future */
+        $future = $next($context);
+        $future->onResolve(
             function ($data) use ($deferred) {
                 $deferred->resolve($data);
             },
             function ($reason) use ($context, $deferred) {
+                $msg = $reason instanceof \Throwable ? $reason->getMessage() : (\is_scalar($reason) || $reason instanceof \Stringable ? (string)$reason : 'Unknown error');
+
                 if ($context->stale_item !== null) {
                     $this->logger->warning('AsyncCache STALE_ON_ERROR: fetch failed, serving stale data', [
                         'key' => $context->key,
-                        'reason' => $reason instanceof \Throwable ? $reason->getMessage() : (string)$reason
+                        'reason' => $msg
                     ]);
 
                     $this->dispatcher?->dispatch(new CacheStatusEvent(
@@ -83,7 +89,7 @@ class StaleOnErrorMiddleware implements MiddlewareInterface
                     return;
                 }
 
-                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
+                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException($msg));
             }
         );
 

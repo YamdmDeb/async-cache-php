@@ -38,9 +38,9 @@ class ChainCacheAdapter implements AsyncCacheAdapterInterface
     /** @var AsyncCacheAdapterInterface[] Ordered list of asynchronous adapters */
     private array $adapters = [];
 
-    /**
-     * @param  array  $adapters  Ordered list of adapters (Psr, React or Async)
-     */
+     /**
+      * @param  AsyncCacheAdapterInterface[]  $adapters  Ordered list of adapters (Psr, React or Async)
+      */
     public function __construct(array $adapters)
     {
         foreach ($adapters as $adapter) {
@@ -86,7 +86,7 @@ class ChainCacheAdapter implements AsyncCacheAdapterInterface
             function ($value) use ($key, $index, $deferred) {
                 if ($value !== null) {
                     // Backfill: populate all faster layers above this one asynchronously
-                    for ($i = 0; $i < $index; $i++) {
+                for ($i = 0; $i < $index && isset($this->adapters[$i]); $i++) {
                         $this->adapters[$i]->set($key, $value);
                     }
                     $deferred->resolve($value);
@@ -106,13 +106,14 @@ class ChainCacheAdapter implements AsyncCacheAdapterInterface
     /**
      * Obtains multiple cache items by their unique keys
      *
-     * @param  iterable  $keys  A list of keys that can be obtained in a single operation
-     * @return Future           Resolves to an array of key => value pairs
+     * @param  iterable<string>  $keys  A list of keys that can be obtained in a single operation
+     * @return Future            Resolves to an array of key => value pairs
      */
     public function getMultiple(iterable $keys) : Future
     {
         $deferred = new Deferred();
         $results = [];
+        /** @var array<string> $keys_array */
         $keys_array = is_array($keys) ? $keys : iterator_to_array($keys);
         $total_keys = count($keys_array);
 
@@ -122,15 +123,15 @@ class ChainCacheAdapter implements AsyncCacheAdapterInterface
         }
 
         $processed_count = 0;
-        foreach ($keys_array as $key) {
-            $this->get($key)->onResolve(function ($value) use ($key, &$results, &$processed_count, $total_keys, $deferred) {
-                $results[$key] = $value;
-                $processed_count++;
-                if ($processed_count === total_keys) {
-                    $deferred->resolve($results);
-                }
-            });
-        }
+            foreach ($keys_array as $key) {
+                $this->get($key)->onResolve(function ($value) use ($key, &$results, &$processed_count, $total_keys, $deferred) {
+                    $results[$key] = $value;
+                    $processed_count++;
+                    if ($processed_count === $total_keys) {
+                        $deferred->resolve($results);
+                    }
+                });
+            }
 
         return $deferred->future();
     }
@@ -201,7 +202,7 @@ class ChainCacheAdapter implements AsyncCacheAdapterInterface
     /**
      * Wipes clean all cache layers concurrently
      *
-     * @return Future  Resolves to true on success and false on failure
+     * @return Future Resolves to true on success and false on failure
      */
     public function clear() : Future
     {

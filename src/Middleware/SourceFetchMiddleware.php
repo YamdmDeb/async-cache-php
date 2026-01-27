@@ -68,7 +68,9 @@ class SourceFetchMiddleware implements MiddlewareInterface
         $deferred = new Deferred();
 
         try {
-            $source_result = ($context->promise_factory)();
+            /** @var callable $factory */
+            $factory = $context->promise_factory;
+            $source_result = $factory();
             $source_future = PromiseAdapter::toFuture($source_result);
         } catch (\Throwable $e) {
             $deferred->reject($e);
@@ -92,11 +94,12 @@ class SourceFetchMiddleware implements MiddlewareInterface
                 $deferred->resolve($data);
             },
             function ($reason) use ($context, $deferred) {
+                $msg = $reason instanceof \Throwable ? $reason->getMessage() : (\is_scalar($reason) || $reason instanceof \Stringable ? (string)$reason : 'Unknown error');
                 $this->logger->error('AsyncCache FETCH_ERROR', [
                     'key' => $context->key,
-                    'reason' => $reason instanceof \Throwable ? $reason->getMessage() : (string)$reason
+                    'reason' => $msg
                 ]);
-                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException((string)$reason));
+                $deferred->reject($reason instanceof \Throwable ? $reason : new \RuntimeException($msg));
             }
         );
 

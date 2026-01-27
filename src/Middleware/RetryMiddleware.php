@@ -37,6 +37,8 @@ use Psr\Log\NullLogger;
  */
 class RetryMiddleware implements MiddlewareInterface
 {
+    private LoggerInterface $logger;
+
     /**
      * @param  int                   $max_retries       Maximum number of retry attempts
      * @param  int                   $initial_delay_ms  Delay before the first retry in milliseconds
@@ -47,9 +49,9 @@ class RetryMiddleware implements MiddlewareInterface
         private int $max_retries = 3,
         private int $initial_delay_ms = 100,
         private float $multiplier = 2.0,
-        private ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null
     ) {
-        $this->logger = $this->logger ?? new NullLogger();
+        $this->logger = $logger ?? new NullLogger();
     }
 
     /**
@@ -76,7 +78,10 @@ class RetryMiddleware implements MiddlewareInterface
     {
         $deferred = new Deferred();
 
-        $next($context)->onResolve(
+        /** @var Future $future */
+        $future = $next($context);
+
+        $future->onResolve(
             function ($value) use ($deferred) {
                 $deferred->resolve($value);
             },

@@ -40,13 +40,13 @@ class Pipeline
     ) {
     }
 
-    /**
-     * Sends the context through the pipeline towards the final destination
-     *
-     * @param  CacheContext  $context      The current state object
-     * @param  callable      $destination  The final handler (usually the fetcher)
-     * @return Future                      Combined future representing the full pipeline
-     */
+     /**
+      * Sends the context through the pipeline towards the final destination
+      *
+      * @param  CacheContext                   $context      The current state object
+      * @param  callable(CacheContext):Future  $destination  The final handler (usually the fetcher)
+      * @return Future                                       Combined future representing the full pipeline
+      */
     public function send(CacheContext $context, callable $destination) : Future
     {
         $pipeline = array_reduce(

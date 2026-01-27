@@ -63,9 +63,13 @@ class CacheLookupMiddleware implements MiddlewareInterface
      */
     public function handle(CacheContext $context, callable $next) : Future
     {
+        // Basic tracing for debugging
+        $this->logger->debug('CacheLookupMiddleware: handling cache context', ['key' => $context->key, 'strategy' => $context->options->strategy->value]);
         if ($context->options->strategy === CacheStrategy::ForceRefresh) {
             $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Bypass, 0, $context->options->tags));
-            return $next($context);
+            /** @var Future $result */
+            $result = $next($context);
+            return $result;
         }
 
         $deferred = new Deferred();
@@ -104,7 +108,9 @@ class CacheLookupMiddleware implements MiddlewareInterface
                     }
                 }
 
-                $next($context)->onResolve(
+                /** @var Future $future */
+                $future = $next($context);
+                $future->onResolve(
                     fn($v) => $deferred->resolve($v),
                     fn($e) => $deferred->reject($e)
                 );

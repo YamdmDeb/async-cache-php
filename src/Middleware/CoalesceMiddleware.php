@@ -49,6 +49,7 @@ class CoalesceMiddleware implements MiddlewareInterface
             return self::$in_flight[$key];
         }
 
+        /** @var Future $future */
         $future = $next($context);
         self::$in_flight[$key] = $future;
 

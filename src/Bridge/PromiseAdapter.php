@@ -58,14 +58,14 @@ class PromiseAdapter
      * Converts a native Future to a ReactPHP Promise
      *
      * @param  Future  $future  The library-native Future instance to be adapted
-     * @return ReactPromiseInterface A ReactPHP Promise that completes when the Future is resolved or rejected
+     * @return ReactPromiseInterface<mixed> A ReactPHP Promise that completes when the Future is resolved or rejected
      */
     public static function toReact(Future $future) : ReactPromiseInterface
     {
         $deferred = new ReactDeferred();
         $future->onResolve(
             fn($v) => $deferred->resolve($v),
-            fn($r) => $deferred->reject($r)
+            fn($r) => $deferred->reject($r instanceof \Throwable ? $r : new \RuntimeException(\is_scalar($r) || $r instanceof \Stringable ? (string)$r : 'Unknown error'))
         );
         return $deferred->promise();
     }
@@ -99,11 +99,12 @@ class PromiseAdapter
             );
 
             // Ensure Guzzle's task queue is flushed
-            if (class_exists(Utils::class)) {
-                Utils::queue()->run();
-            } else {
-                \GuzzleHttp\Promise\queue()->run();
-            }
+        if (class_exists(Utils::class)) {
+            Utils::queue()->run();
+        } else {
+            // @phpstan-ignore-next-line
+            \GuzzleHttp\Promise\queue()->run();
+        }
 
             return $deferred->future();
         }

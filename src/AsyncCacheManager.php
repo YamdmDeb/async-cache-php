@@ -57,13 +57,14 @@ class AsyncCacheManager
 {
     private Pipeline $pipeline;
     private CacheStorage $storage;
+    private LockFactory $lock_factory;
 
     /**
      * @param  PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface  $cache_adapter  The cache implementation
      * @param  LimiterInterface|null                                             $rate_limiter   The Symfony Rate Limiter implementation
      * @param  LoggerInterface|null                                              $logger         The PSR-3 logger implementation
      * @param  LockFactory|null                                                  $lock_factory   The Symfony Lock Factory
-     * @param  array                                                             $middlewares    Optional custom middleware stack
+     * @param  \Fyennyi\AsyncCache\Middleware\MiddlewareInterface[]              $middlewares    Optional custom middleware stack
      * @param  EventDispatcherInterface|null                                     $dispatcher     The PSR-14 event dispatcher
      * @param  SerializerInterface|null                                          $serializer     The custom serializer
      */
@@ -71,7 +72,7 @@ class AsyncCacheManager
         PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter,
         private ?LimiterInterface $rate_limiter = null,
         private ?LoggerInterface $logger = null,
-        private ?LockFactory $lock_factory = null,
+        ?LockFactory $lock_factory = null,
         array $middlewares = [],
         private ?EventDispatcherInterface $dispatcher = null,
         ?SerializerInterface $serializer = null
@@ -86,7 +87,7 @@ class AsyncCacheManager
         }
 
         $this->storage = new CacheStorage($cache_adapter, $this->logger, $serializer);
-        $this->lock_factory = $this->lock_factory ?? new LockFactory(new SemaphoreStore());
+        $this->lock_factory = $lock_factory ?? new LockFactory(new SemaphoreStore());
 
         if (empty($middlewares)) {
             $middlewares = [
@@ -104,8 +105,6 @@ class AsyncCacheManager
     /**
      * Wraps an operation with caching and returns a library-native Future
      *
-     * @template T
-     *
      * @param  string        $key              Cache key identifier
      * @param  callable      $promise_factory  Function that returns a value or promise
      * @param  CacheOptions  $options          Caching configuration
@@ -118,7 +117,9 @@ class AsyncCacheManager
         // Execute the pipeline. The result is a Future from the last middleware.
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             try {
-                $res = ($ctx->promise_factory)();
+                /** @var callable $factory */
+                $factory = $ctx->promise_factory;
+                $res = $factory();
                 return PromiseAdapter::toFuture($res);
             } catch (\Throwable $e) {
                 $deferred = new Deferred();
@@ -152,7 +153,8 @@ class AsyncCacheManager
                 $this->storage->get($key, $options)->onResolve(
                     function ($item) use ($key, $step, $options, $lock, $deferred) {
                         try {
-                            $current_value = $item ? (int) $item->data : 0;
+                            /** @var \Fyennyi\AsyncCache\Model\CachedItem|null $item */
+                            $current_value = ($item && is_numeric($item->data)) ? (int) $item->data : 0;
                             $new_value = $current_value + $step;
 
                             $this->storage->set($key, $new_value, $options)->onResolve(
@@ -207,8 +209,8 @@ class AsyncCacheManager
     /**
      * Invalidates all cache entries associated with the given tags
      *
-     * @param  array  $tags  List of tags to invalidate
-     * @return Future        Resolves to true on success
+     * @param  string[]  $tags  List of tags to invalidate
+     * @return Future           Resolves to true on success
      */
     public function invalidateTags(array $tags) : Future
     {
@@ -218,7 +220,7 @@ class AsyncCacheManager
     /**
      * Clears the entire cache storage
      *
-     * @return Future  Resolves to true on success
+     * @return Future Resolves to true on success
      */
     public function clear() : Future
     {

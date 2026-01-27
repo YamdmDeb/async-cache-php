@@ -33,12 +33,12 @@ class CachedItem
     public const CURRENT_VERSION = 1;
 
     /**
-     * @param  mixed   $data                 The actual cached value
-     * @param  int     $logical_expire_time  Unix timestamp when the data becomes stale
-     * @param  int     $version              Metadata schema version
-     * @param  bool    $is_compressed        Whether the data is currently gzipped
-     * @param  float   $generation_time      Duration in seconds taken to fetch this data
-     * @param  array   $tag_versions         Map of tag names to their versions at caching time
+     * @param  mixed     $data                 The actual cached value
+     * @param  int       $logical_expire_time  Unix timestamp when the data becomes stale
+     * @param  int       $version              Metadata schema version
+     * @param  bool      $is_compressed        Whether the data is currently gzipped
+     * @param  float     $generation_time      Duration in seconds taken to fetch this data
+     * @param  string[]  $tag_versions         Map of tag names to their versions at caching time
      */
     public function __construct(
         public readonly mixed $data,

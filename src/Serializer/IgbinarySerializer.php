@@ -44,11 +44,15 @@ class IgbinarySerializer implements SerializerInterface
      */
     public function serialize(mixed $data) : string
     {
-        if ($this->supported) {
-            return igbinary_serialize($data);
+        if ($this->supported && function_exists('igbinary_serialize')) {
+            $result = igbinary_serialize($data);
+            if (is_string($result)) {
+                return $result;
+            }
         }
-
-        return serialize($data);
+        // Fallback to PHP's built-in serializer for compatibility
+        $ser = serialize($data);
+        return (string) $ser;
     }
 
     /**
@@ -57,10 +61,13 @@ class IgbinarySerializer implements SerializerInterface
      */
     public function unserialize(string $data) : mixed
     {
-        if ($this->supported) {
-            return igbinary_unserialize($data);
+        if ($this->supported && function_exists('igbinary_unserialize')) {
+            $result = @igbinary_unserialize($data);
+            if ($result !== null || $data === '') {
+                return $result;
+            }
         }
-
+        // Fallback to PHP's built-in unserializer for compatibility
         return unserialize($data);
     }
 }

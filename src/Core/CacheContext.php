@@ -43,9 +43,9 @@ class CacheContext
     public ?Future $result_future = null;
 
     /**
-     * @param  string        $key             The cache key
+     * @param  string        $key              The cache key
      * @param  mixed         $promise_factory  Callback to fetch fresh data
-     * @param  CacheOptions  $options         Resolved caching options
+     * @param  CacheOptions  $options          Resolved caching options
      */
     public function __construct(
         public readonly string $key,

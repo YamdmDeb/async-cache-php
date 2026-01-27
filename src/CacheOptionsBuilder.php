@@ -41,6 +41,7 @@ class CacheOptionsBuilder
     private bool $fail_safe = true;
     private float $x_fetch_beta = 1.0;
     private ?string $rate_limit_key = null;
+    /** @var string[] */
     private array $tags = [];
 
     /**
@@ -163,12 +164,12 @@ class CacheOptionsBuilder
         return $this;
     }
 
-    /**
-     * Sets cache invalidation tags
-     *
-     * @param  array  $tags  List of tags
-     * @return self          Current builder instance
-     */
+     /**
+      * Sets cache invalidation tags
+      *
+      * @param  string[]  $tags  List of tags
+      * @return self             Current builder instance
+      */
     public function withTags(array $tags) : self
     {
         $this->tags = $tags;

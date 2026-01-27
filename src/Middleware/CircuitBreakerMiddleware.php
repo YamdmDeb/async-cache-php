@@ -41,21 +41,23 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
     private const STATE_OPEN = 'open';
     private const STATE_HALF_OPEN = 'half_open';
 
+    private LoggerInterface $logger;
+
     /**
-     * @param  CacheInterface       $storage            Storage for breaker state and failure counts
-     * @param  int                  $failure_threshold  Number of failures before opening the circuit
-     * @param  int                  $retry_timeout      Timeout in seconds before moving to half-open state
-     * @param  string               $prefix             Cache key prefix for breaker state
-     * @param  LoggerInterface|null $logger             Logger for state changes
+     * @param  CacheInterface        $storage            Storage for breaker state and failure counts
+     * @param  int                   $failure_threshold  Number of failures before opening the circuit
+     * @param  int                   $retry_timeout      Timeout in seconds before moving to half-open state
+     * @param  string                $prefix             Cache key prefix for breaker state
+     * @param  LoggerInterface|null  $logger             Logger for state changes
      */
     public function __construct(
         private CacheInterface $storage,
         private int $failure_threshold = 5,
         private int $retry_timeout = 60,
         private string $prefix = 'cb:',
-        private ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null
     ) {
-        $this->logger = $this->logger ?? new NullLogger();
+        $this->logger = $logger ?? new NullLogger();
     }
 
     /**
@@ -73,7 +75,8 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
         $state = $this->storage->get($state_key, self::STATE_CLOSED);
 
         if ($state === self::STATE_OPEN) {
-            $last_failure_time = (int) $this->storage->get($this->prefix . $context->key . ':last_failure', 0);
+            $val = $this->storage->get($this->prefix . $context->key . ':last_failure', 0);
+            $last_failure_time = is_numeric($val) ? (int) $val : 0;
 
             if (time() - $last_failure_time < $this->retry_timeout) {
                 $this->logger->error('AsyncCache CIRCUIT_BREAKER: Open state, blocking request', ['key' => $context->key]);
@@ -91,7 +94,9 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
 
         $deferred = new Deferred();
 
-        $next($context)->onResolve(
+        /** @var Future $future */
+        $future = $next($context);
+        $future->onResolve(
             function ($data) use ($state_key, $failure_key, $context, $deferred) {
                 $this->onSuccess($state_key, $failure_key, $context->key);
                 $deferred->resolve($data);
@@ -130,7 +135,8 @@ class CircuitBreakerMiddleware implements MiddlewareInterface
      */
     private function onFailure(string $state_key, string $failure_key, string $key) : void
     {
-        $failures = (int) $this->storage->get($failure_key, 0) + 1;
+        $val = $this->storage->get($failure_key, 0);
+        $failures = (is_numeric($val) ? (int) $val : 0) + 1;
         $this->storage->set($failure_key, $failures);
 
         if ($failures >= $this->failure_threshold) {

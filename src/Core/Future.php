@@ -86,7 +86,14 @@ class Future
         }
 
         if ($this->is_rejected) {
-            throw $this->result instanceof \Throwable ? $this->result : new \RuntimeException((string)$this->result);
+            $reason = $this->result;
+            if ($reason instanceof \Throwable) {
+                throw $reason;
+            }
+            // Use get_debug_type if available or a simple fallback
+            $type = \function_exists('get_debug_type') ? get_debug_type($reason) : \gettype($reason);
+            $message = \is_scalar($reason) || $reason instanceof \Stringable ? (string)$reason : 'Unknown error (' . $type . ')';
+            throw new \RuntimeException($message);
         }
 
         // Bridge to ReactPHP's await mechanism without full Adapter dependency
@@ -94,7 +101,7 @@ class Future
 
         $this->onResolve(
             fn($v) => $deferred->resolve($v),
-            fn($e) => $deferred->reject($e)
+            fn($e) => $deferred->reject($e instanceof \Throwable ? $e : new \RuntimeException(\is_scalar($e) || $e instanceof \Stringable ? (string)$e : 'Unknown error'))
         );
 
         return \React\Async\await($deferred->promise());

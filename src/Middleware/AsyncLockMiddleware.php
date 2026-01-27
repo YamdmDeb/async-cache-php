@@ -151,7 +151,10 @@ class AsyncLockMiddleware implements MiddlewareInterface
     {
         $deferred = new Deferred();
 
-        $next($context)->onResolve(
+        /** @var Future $future */
+        $future = $next($context);
+
+        $future->onResolve(
             function ($data) use ($lock_key, $deferred) {
                 $this->releaseLock($lock_key);
                 $deferred->resolve($data);
