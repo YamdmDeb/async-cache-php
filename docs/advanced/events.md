@@ -39,5 +39,3 @@ The `CacheStatusEvent` is particularly useful for logging metrics (e.g., to Prom
 - **Duration**: How long the lookup took.
 - **Status**: Why the result was returned (Hit, Miss, Stale fallback, etc.).
 - **Tags**: Categories associated with the key.
-
-```
