@@ -47,13 +47,18 @@ theme:
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Usage:
-    - Basic Setup: usage/setup.md
-    - Wrapping Operations: usage/wrapping.md
+  - Getting Started: usage/getting-started.md
+  - Core Concepts:
+    - Caching Strategies: concepts/strategies.md
     - Rate Limiting: usage/rate-limiting.md
-  - Concepts:
-    - Stale-While-Limited: concepts/stale-while-limited.md
-    - Cache TTL vs Grace Period: concepts/ttl.md
+    - Atomic Operations: features/atomic.md
+    - X-Fetch & Stampede Protection: concepts/x-fetch.md
+    - Cache TTL: concepts/ttl.md
+  - Advanced Usage:
+    - Middleware Pipeline: advanced/middleware.md
+    - Events & Telemetry: advanced/events.md
+    - Serialization: advanced/serialization.md
+  - API Reference: reference.md
 
 markdown_extensions:
   - admonition
