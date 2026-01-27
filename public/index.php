@@ -97,7 +97,7 @@ $http = new HttpServer(async(function (ServerRequestInterface $request) use ($me
     // --- STATIC FILES ---
     
     // Serve dashboard.html as the primary entry point
-    if ($path === '/' || $path === '/dashboard' || $path === '/index.html') {
+    if ($path === '/' || $path === '/dashboard') {
         return new Response(200, ['Content-Type' => 'text/html'], file_get_contents(__DIR__ . '/dashboard.html'));
     }
     
