@@ -83,28 +83,12 @@ class AsyncCacheManager
         return $this->pipeline->send($context, function (CacheContext $ctx) {
             try {
                 $res = ($ctx->promiseFactory)();
+                return \Fyennyi\AsyncCache\Bridge\PromiseAdapter::toFuture($res);
             } catch (\Throwable $e) {
                 $deferred = new Deferred();
                 $deferred->reject($e);
                 return $deferred->future();
             }
-
-            $deferred = new Deferred();
-
-            if ($res instanceof Future) {
-                $res->onResolve(
-                    fn($v) => $deferred->resolve($v),
-                    fn($r) => $deferred->reject($r)
-                );
-            } elseif (is_object($res) && method_exists($res, 'then')) {
-                $res->then(
-                    fn($v) => $deferred->resolve($v),
-                    fn($r) => $deferred->reject($r)
-                );
-            } else {
-                $deferred->resolve($res);
-            }
-            return $deferred->future();
         });
     }
 
