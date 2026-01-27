@@ -5,6 +5,8 @@ namespace Fyennyi\AsyncCache\Bridge;
 use Fyennyi\AsyncCache\Core\Deferred;
 use Fyennyi\AsyncCache\Core\Future;
 use GuzzleHttp\Promise\Promise as GuzzlePromise;
+use GuzzleHttp\Promise\PromiseInterface as GuzzlePromiseInterface;
+use GuzzleHttp\Promise\Utils;
 use React\Promise\Deferred as ReactDeferred;
 use React\Promise\PromiseInterface as ReactPromiseInterface;
 
@@ -15,11 +17,8 @@ class PromiseAdapter
 {
     /**
      * Converts a native Future to a Guzzle Promise
-     *
-     * @param  Future  $future  The internal future to convert
-     * @return \GuzzleHttp\Promise\PromiseInterface Guzzle promise resolving with the future's result
      */
-    public static function toGuzzle(Future $future) : \GuzzleHttp\Promise\PromiseInterface
+    public static function toGuzzle(Future $future) : GuzzlePromiseInterface
     {
         $guzzle = new GuzzlePromise();
         $future->onResolve(
@@ -31,9 +30,6 @@ class PromiseAdapter
 
     /**
      * Converts a native Future to a ReactPHP Promise
-     *
-     * @param  Future  $future  The internal future to convert
-     * @return ReactPromiseInterface React promise resolving with the future's result
      */
     public static function toReact(Future $future) : ReactPromiseInterface
     {
@@ -46,18 +42,45 @@ class PromiseAdapter
     }
 
     /**
-     * Converts a ReactPHP Promise to a native Future
+     * Converts Futures, ReactPHP/Guzzle promises or raw values to a native Future
      *
-     * @param  ReactPromiseInterface  $promise  The external promise to wrap
-     * @return Future                           Internal future tracking the promise state
+     * @param  mixed  $value  The value or promise to convert
+     * @return Future         A Future tracking the resolution
      */
-    public static function toFuture(ReactPromiseInterface $promise) : Future
+    public static function toFuture(mixed $value) : Future
     {
+        if ($value instanceof Future) {
+            return $value;
+        }
+
         $deferred = new Deferred();
-        $promise->then(
-            fn($v) => $deferred->resolve($v),
-            fn($r) => $deferred->reject($r)
-        );
+
+        if ($value instanceof ReactPromiseInterface) {
+            $value->then(
+                fn($v) => $deferred->resolve($v),
+                fn($r) => $deferred->reject($r)
+            );
+            return $deferred->future();
+        }
+
+        if ($value instanceof GuzzlePromiseInterface) {
+            $value->then(
+                fn($v) => $deferred->resolve($v),
+                fn($r) => $deferred->reject($r)
+            );
+
+            // Ensure Guzzle's task queue is flushed
+            if (class_exists(Utils::class)) {
+                Utils::queue()->run();
+            } else {
+                \GuzzleHttp\Promise\queue()->run();
+            }
+
+            return $deferred->future();
+        }
+
+        // It's a raw value
+        $deferred->resolve($value);
         return $deferred->future();
     }
 }
