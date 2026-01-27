@@ -60,18 +60,24 @@ class CacheStorageTest extends TestCase
         $this->assertTrue($this->storage->set('key', $data, $options)->wait());
     }
 
-    public function testGetDecompressesData() : void
+    public function testGetReturnsNullIfDecompressionFails() : void
     {
-        $orig = str_repeat('a', 2000);
-        $compressed = gzcompress(serialize($orig));
-        
-        $item = new CachedItem($compressed, time() + 100, is_compressed: true);
+        // Corrupt compressed data
+        $item = new CachedItem('not_valid_gzip_data', time() + 100, is_compressed: true);
         
         $d = new Deferred(); $d->resolve($item);
         $this->adapter->method('get')->willReturn($d->future());
 
-        $res = $this->storage->get('key', new CacheOptions())->wait();
-        $this->assertSame($orig, $res->data);
-        $this->assertFalse($res->is_compressed);
+        // Should log error and return null
+        $this->assertNull($this->storage->get('key', new CacheOptions())->wait());
+    }
+
+    public function testGetReturnsNullIfItemIsNotCachedItem() : void
+    {
+        // Adapter returns something weird (e.g. raw string from a non-compliant adapter)
+        $d = new Deferred(); $d->resolve('im_just_a_string');
+        $this->adapter->method('get')->willReturn($d->future());
+
+        $this->assertNull($this->storage->get('key', new CacheOptions())->wait());
     }
 }

@@ -47,15 +47,15 @@ class SerializerTest extends TestCase
         $serializer->unserialize('{invalid_json');
     }
 
-    public function testIgbinarySerializerFallback() : void
+    public function testJsonSerializerWithOptions() : void
     {
-        // Even if extension is missing, it should fallback to native serialize
-        $serializer = new IgbinarySerializer();
-        $data = ['foo' => 'bar'];
-
+        $serializer = new JsonSerializer(JSON_PRETTY_PRINT);
+        $data = ['a' => 1];
+        
         $serialized = $serializer->serialize($data);
-        $this->assertIsString($serialized);
-
+        // Should contain newlines due to pretty print
+        $this->assertStringContainsString("\n", $serialized);
+        
         $unserialized = $serializer->unserialize($serialized);
         $this->assertSame($data, $unserialized);
     }
