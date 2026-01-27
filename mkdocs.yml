@@ -47,14 +47,15 @@ theme:
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Getting Started: usage/getting-started.md
-  - Core Concepts:
-    - Caching Strategies: concepts/strategies.md
+  - Usage:
+    - Getting Started: usage/getting-started.md
+    - Caching Strategies: usage/strategies.md
     - Rate Limiting: usage/rate-limiting.md
-    - Atomic Operations: features/atomic.md
+    - Atomic Operations: usage/atomic.md
+  - Concepts:
     - X-Fetch & Stampede Protection: concepts/x-fetch.md
-    - Cache TTL: concepts/ttl.md
-  - Advanced Usage:
+    - Cache TTL vs Grace Period: concepts/ttl.md
+  - Advanced:
     - Middleware Pipeline: advanced/middleware.md
     - Events & Telemetry: advanced/events.md
     - Serialization: advanced/serialization.md

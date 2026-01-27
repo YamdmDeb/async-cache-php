@@ -82,6 +82,6 @@ $result = $future->wait();
 
 ## Next Steps
 
-- Explore [Caching Strategies](../concepts/strategies.md) to optimize performance.
-- Learn about [Atomic Operations](../features/atomic.md) for counters.
+- Explore [Caching Strategies](strategies.md) to optimize performance.
+- Learn about [Atomic Operations](atomic.md) for counters.
 - Configure [Rate Limiting](rate-limiting.md) for external APIs.
