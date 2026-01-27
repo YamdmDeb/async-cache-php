@@ -136,8 +136,11 @@ class AsyncLockMiddleware implements MiddlewareInterface
 
     /**
      * Safely releases and removes the lock from tracking
+     *
+     * @param  string  $lock_key  Unique identifier of the lock to release
+     * @return void
      */
-    private function releaseLock(string $lock_key): void
+    private function releaseLock(string $lock_key) : void
     {
         if (isset($this->activeLocks[$lock_key])) {
             $this->activeLocks[$lock_key]->release();
