@@ -28,7 +28,6 @@ namespace Fyennyi\AsyncCache;
 use Fyennyi\AsyncCache\Bridge\PromiseAdapter;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Pipeline;
-use Fyennyi\AsyncCache\Core\Timer;
 use Fyennyi\AsyncCache\Middleware\AsyncLockMiddleware;
 use Fyennyi\AsyncCache\Middleware\CacheLookupMiddleware;
 use Fyennyi\AsyncCache\Middleware\CoalesceMiddleware;
@@ -47,6 +46,7 @@ use Psr\SimpleCache\CacheInterface as PsrCacheInterface;
 use React\Cache\CacheInterface as ReactCacheInterface;
 use React\Promise\Deferred;
 use React\Promise\PromiseInterface;
+use function React\Promise\Timer\resolve as delay;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\SemaphoreStore;
 use Symfony\Component\RateLimiter\LimiterInterface;
@@ -180,7 +180,7 @@ class AsyncCacheManager
                 return;
             }
 
-            Timer::delay(0.05)->then($attempt);
+            delay(0.05)->then($attempt);
         };
 
         $attempt();

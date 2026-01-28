@@ -26,7 +26,6 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
-use Fyennyi\AsyncCache\Core\Timer;
 use Fyennyi\AsyncCache\Enum\CacheStatus;
 use Fyennyi\AsyncCache\Event\CacheHitEvent;
 use Fyennyi\AsyncCache\Event\CacheStatusEvent;
@@ -37,6 +36,7 @@ use Psr\Log\LoggerInterface;
 use React\Promise\Deferred;
 use React\Promise\PromiseInterface;
 use function React\Promise\resolve;
+use function React\Promise\Timer\resolve as delay;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\LockInterface;
 
@@ -126,7 +126,7 @@ class AsyncLockMiddleware implements MiddlewareInterface
             }
 
             // Retry after delay
-            Timer::delay(0.05)->then(function() use ($attempt) {
+            delay(0.05)->then(function() use ($attempt) {
                 $attempt();
             });
         };

@@ -26,10 +26,10 @@
 namespace Fyennyi\AsyncCache\Middleware;
 
 use Fyennyi\AsyncCache\Core\CacheContext;
-use Fyennyi\AsyncCache\Core\Timer;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use React\Promise\PromiseInterface;
+use function React\Promise\Timer\resolve as delay;
 
 /**
  * Middleware that retries failed requests with exponential backoff
@@ -96,7 +96,7 @@ class RetryMiddleware implements MiddlewareInterface
                 ]);
 
                 // Non-blocking wait then retry
-                return Timer::delay($delay_ms / 1000)->then(
+                return delay($delay_ms / 1000)->then(
                     fn() => $this->attempt($context, $next, $retries + 1)
                 );
             }
