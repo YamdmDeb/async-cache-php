@@ -10,22 +10,25 @@ use Fyennyi\AsyncCache\Storage\CacheStorage;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\Clock\MockClock;
 use function React\Async\await;
 
 class TagValidationMiddlewareTest extends TestCase
 {
     private MockObject|CacheStorage $storage;
+    private MockClock $clock;
     private TagValidationMiddleware $middleware;
 
     protected function setUp() : void
     {
         $this->storage = $this->createMock(CacheStorage::class);
+        $this->clock = new MockClock();
         $this->middleware = new TagValidationMiddleware($this->storage, new NullLogger());
     }
 
     public function testReturnsNextIfNoStaleItem() : void
     {
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $next = fn () => \React\Promise\resolve('from_next');
 
         $this->assertSame('from_next', await($this->middleware->handle($context, $next)));
@@ -33,8 +36,8 @@ class TagValidationMiddlewareTest extends TestCase
 
     public function testReturnsNextIfNoTagsInItem() : void
     {
-        $item = new CachedItem('data', time() + 100);
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $item = new CachedItem('data', $this->clock->now()->getTimestamp() + 100);
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $context->stale_item = $item;
 
         $next = fn () => \React\Promise\resolve('from_next');
@@ -43,8 +46,8 @@ class TagValidationMiddlewareTest extends TestCase
 
     public function testReturnsItemIfFreshAndTagsValid() : void
     {
-        $item = new CachedItem('fresh_data', time() + 100, tag_versions: ['t1' => 'v1']);
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $item = new CachedItem('fresh_data', $this->clock->now()->getTimestamp() + 100, tag_versions: ['t1' => 'v1']);
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $context->stale_item = $item;
 
         $this->storage->expects($this->once())
@@ -60,8 +63,8 @@ class TagValidationMiddlewareTest extends TestCase
 
     public function testInvalidatesStaleItemIfTagMismatch() : void
     {
-        $item = new CachedItem('data', time() + 100, tag_versions: ['t1' => 'v1']);
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $item = new CachedItem('data', $this->clock->now()->getTimestamp() + 100, tag_versions: ['t1' => 'v1']);
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $context->stale_item = $item;
 
         $this->storage->method('fetchTagVersions')->willReturn(\React\Promise\resolve(['t1' => 'v2'])); // Mismatch
@@ -76,8 +79,8 @@ class TagValidationMiddlewareTest extends TestCase
 
     public function testProceedsIfTagsValidButItemExpired() : void
     {
-        $item = new CachedItem('expired_data', time() - 10, tag_versions: ['t1' => 'v1']);
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $item = new CachedItem('expired_data', $this->clock->now()->getTimestamp() - 10, tag_versions: ['t1' => 'v1']);
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $context->stale_item = $item;
 
         $this->storage->method('fetchTagVersions')->willReturn(\React\Promise\resolve(['t1' => 'v1']));
@@ -92,8 +95,8 @@ class TagValidationMiddlewareTest extends TestCase
 
     public function testHandlesTagFetchError() : void
     {
-        $item = new CachedItem('data', time() + 100, tag_versions: ['t1' => 'v1']);
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $item = new CachedItem('data', $this->clock->now()->getTimestamp() + 100, tag_versions: ['t1' => 'v1']);
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $this->clock);
         $context->stale_item = $item;
 
         $this->storage->method('fetchTagVersions')->willReturn(\React\Promise\reject(new \Exception('Fetch fail')));

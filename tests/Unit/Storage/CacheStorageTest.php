@@ -11,17 +11,20 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use React\Promise\Deferred;
+use Symfony\Component\Clock\MockClock;
 use function React\Async\await;
 
 class CacheStorageTest extends TestCase
 {
     private MockObject|AsyncCacheAdapterInterface $adapter;
+    private MockClock $clock;
     private CacheStorage $storage;
 
     protected function setUp() : void
     {
         $this->adapter = $this->createMock(AsyncCacheAdapterInterface::class);
-        $this->storage = new CacheStorage($this->adapter, new NullLogger(), new PhpSerializer());
+        $this->clock = new MockClock();
+        $this->storage = new CacheStorage($this->adapter, new NullLogger(), new PhpSerializer(), $this->clock);
     }
 
     public function testGetReturnsNullOnMiss() : void
@@ -36,7 +39,7 @@ class CacheStorageTest extends TestCase
     public function testGetReturnsUncompressedData() : void
     {
         $data = 'value';
-        $item = new CachedItem($data, time() + 100);
+        $item = new CachedItem($data, $this->clock->now()->getTimestamp() + 100);
 
         $d = new Deferred();
         $d->resolve($item);
@@ -68,7 +71,7 @@ class CacheStorageTest extends TestCase
     public function testGetReturnsNullIfDecompressionFails() : void
     {
         // Corrupt compressed data
-        $item = new CachedItem('not_valid_gzip_data', time() + 100, is_compressed: true);
+        $item = new CachedItem('not_valid_gzip_data', $this->clock->now()->getTimestamp() + 100, is_compressed: true);
 
         $d = new Deferred();
         $d->resolve($item);
@@ -93,7 +96,7 @@ class CacheStorageTest extends TestCase
         $data = 'to_compress';
         $serialized = (new PhpSerializer())->serialize($data);
         $compressed = gzcompress($serialized);
-        $item = new CachedItem($compressed, time() + 100, is_compressed: true);
+        $item = new CachedItem($compressed, $this->clock->now()->getTimestamp() + 100, is_compressed: true);
 
         $this->adapter->method('get')->willReturn(\React\Promise\resolve($item));
 
@@ -105,7 +108,7 @@ class CacheStorageTest extends TestCase
     public function testGetHandlesBackwardCompatibilityArray() : void
     {
         $data = 'old_data';
-        $expire = time() + 3600;
+        $expire = $this->clock->now()->getTimestamp() + 3600;
         $d = new Deferred();
         $d->resolve(['d' => $data, 'e' => $expire]);
         $this->adapter->method('get')->willReturn($d->promise());

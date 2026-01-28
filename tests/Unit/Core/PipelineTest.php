@@ -8,6 +8,7 @@ use Fyennyi\AsyncCache\Core\Pipeline;
 use Fyennyi\AsyncCache\Middleware\MiddlewareInterface;
 use PHPUnit\Framework\TestCase;
 use React\Promise\Deferred;
+use Symfony\Component\Clock\MockClock;
 use function React\Async\await;
 
 class PipelineTest extends TestCase
@@ -15,6 +16,7 @@ class PipelineTest extends TestCase
     public function testExecutesMiddlewaresInOrder() : void
     {
         $log = [];
+        $clock = new MockClock();
 
         $m1 = $this->createMock(MiddlewareInterface::class);
         $m1->method('handle')->willReturnCallback(function ($ctx, $next) use (&$log) {
@@ -33,7 +35,7 @@ class PipelineTest extends TestCase
         });
 
         $pipeline = new Pipeline([$m1, $m2]);
-        $context = new CacheContext('key', fn () => 'val', new CacheOptions());
+        $context = new CacheContext('key', fn () => 'val', new CacheOptions(), $clock);
 
         $destination = function ($ctx) use (&$log) {
             $log[] = 'dest';
@@ -52,9 +54,10 @@ class PipelineTest extends TestCase
     {
         $m1 = $this->createMock(MiddlewareInterface::class);
         $m1->method('handle')->willThrowException(new \Exception('Middleware Failed'));
+        $clock = new MockClock();
 
         $pipeline = new Pipeline([$m1]);
-        $context = new CacheContext('key', fn () => 'val', new CacheOptions());
+        $context = new CacheContext('key', fn () => 'val', new CacheOptions(), $clock);
 
         $future = $pipeline->send($context, fn () => (new Deferred())->promise());
 
@@ -67,7 +70,8 @@ class PipelineTest extends TestCase
     public function testCatchesSyncExceptionInDestination() : void
     {
         $pipeline = new Pipeline([]);
-        $context = new CacheContext('key', fn () => 'val', new CacheOptions());
+        $clock = new MockClock();
+        $context = new CacheContext('key', fn () => 'val', new CacheOptions(), $clock);
 
         $future = $pipeline->send($context, function () {
             throw new \Exception('Destination sync fail');

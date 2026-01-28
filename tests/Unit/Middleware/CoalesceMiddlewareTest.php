@@ -7,6 +7,7 @@ use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Middleware\CoalesceMiddleware;
 use PHPUnit\Framework\TestCase;
 use React\Promise\Deferred;
+use Symfony\Component\Clock\MockClock;
 use function React\Async\await;
 
 class CoalesceMiddlewareTest extends TestCase
@@ -14,7 +15,8 @@ class CoalesceMiddlewareTest extends TestCase
     public function testCoalesceMiddleware() : void
     {
         $middleware = new CoalesceMiddleware();
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $clock = new MockClock();
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $clock);
 
         $deferred = new Deferred();
         $callCount = 0;
@@ -36,7 +38,8 @@ class CoalesceMiddlewareTest extends TestCase
     public function testCoalesceHandlesFailure() : void
     {
         $middleware = new CoalesceMiddleware();
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $clock = new MockClock();
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $clock);
 
         $deferred = new Deferred();
         $p1 = $middleware->handle($context, fn () => $deferred->promise());

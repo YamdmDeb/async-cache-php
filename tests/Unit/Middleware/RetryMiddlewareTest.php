@@ -8,6 +8,7 @@ use Fyennyi\AsyncCache\Middleware\RetryMiddleware;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use React\Promise\Deferred;
+use Symfony\Component\Clock\MockClock;
 use function React\Async\await;
 
 class RetryMiddlewareTest extends TestCase
@@ -15,7 +16,8 @@ class RetryMiddlewareTest extends TestCase
     public function testRetryMiddlewareRetries() : void
     {
         $middleware = new RetryMiddleware(max_retries: 2, initial_delay_ms: 1, logger: new NullLogger());
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $clock = new MockClock();
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $clock);
 
         $failCount = 0;
         $next = function () use (&$failCount) {
@@ -38,7 +40,8 @@ class RetryMiddlewareTest extends TestCase
     public function testRetryMiddlewareExhaustsRetries() : void
     {
         $middleware = new RetryMiddleware(max_retries: 2, initial_delay_ms: 10, logger: new NullLogger());
-        $context = new CacheContext('k', fn () => null, new CacheOptions());
+        $clock = new MockClock();
+        $context = new CacheContext('k', fn () => null, new CacheOptions(), $clock);
 
         $failCount = 0;
         $next = function () use (&$failCount) {
