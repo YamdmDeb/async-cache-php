@@ -25,6 +25,8 @@
 
 namespace Fyennyi\AsyncCache;
 
+use Fyennyi\AsyncCache\Config\AsyncCacheConfig;
+use Fyennyi\AsyncCache\Config\AsyncCacheConfigBuilder;
 use Fyennyi\AsyncCache\Core\CacheContext;
 use Fyennyi\AsyncCache\Core\Pipeline;
 use Fyennyi\AsyncCache\Middleware\AsyncLockMiddleware;
@@ -61,29 +63,21 @@ final class AsyncCacheManager
     private CacheStorage $storage;
     private LockFactory $lock_factory;
     private ClockInterface $clock;
+    private ?LimiterInterface $rate_limiter;
 
     /**
-     * @param PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter The cache implementation
-     * @param LimiterInterface|null                                            $rate_limiter  The Symfony Rate Limiter implementation
-     * @param LoggerInterface|null                                             $logger        The PSR-3 logger implementation
-     * @param LockFactory|null                                                 $lock_factory  The Symfony Lock Factory
-     * @param \Fyennyi\AsyncCache\Middleware\MiddlewareInterface[]             $middlewares   Optional custom middleware stack
-     * @param EventDispatcherInterface|null                                    $dispatcher    The PSR-14 event dispatcher
-     * @param SerializerInterface|null                                         $serializer    The custom serializer
-     * @param ClockInterface|null                                              $clock         The PSR-20 clock implementation
+     * Creates the manager from configuration.
+     *
+     * @param AsyncCacheConfig $config The configuration object
      */
-    public function __construct(
-        PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter,
-        private ?LimiterInterface $rate_limiter = null,
-        private ?LoggerInterface $logger = null,
-        ?LockFactory $lock_factory = null,
-        array $middlewares = [],
-        private ?EventDispatcherInterface $dispatcher = null,
-        ?SerializerInterface $serializer = null,
-        ?ClockInterface $clock = null
-    ) {
-        $this->logger = $this->logger ?? new NullLogger();
-        $this->clock = $clock ?? new NativeClock();
+    public function __construct(AsyncCacheConfig $config)
+    {
+        $cache_adapter = $config->getCacheAdapter();
+        $this->rate_limiter = $config->getRateLimiter();
+        $logger = $config->getLogger() ?? new NullLogger();
+        $serializer = $config->getSerializer();
+        $this->clock = $config->getClock() ?? new NativeClock();
+        $this->lock_factory = $config->getLockFactory() ?? new LockFactory(new SemaphoreStore());
 
         // Auto-detect and wrap the adapter type for full async support
         if ($cache_adapter instanceof PsrCacheInterface) {
@@ -92,19 +86,37 @@ final class AsyncCacheManager
             $cache_adapter = new ReactCacheAdapter($cache_adapter);
         }
 
-        $this->storage = new CacheStorage($cache_adapter, $this->logger, $serializer, $this->clock);
-        $this->lock_factory = $lock_factory ?? new LockFactory(new SemaphoreStore());
+        $this->storage = new CacheStorage($cache_adapter, $logger, $serializer, $this->clock);
 
         $default_middlewares = [
-            new CoalesceMiddleware($this->logger),
-            new StaleOnErrorMiddleware($this->logger, $this->dispatcher),
-            new CacheLookupMiddleware($this->storage, $this->logger, $this->dispatcher),
-            new TagValidationMiddleware($this->storage, $this->logger),
-            new AsyncLockMiddleware($this->lock_factory, $this->storage, $this->logger, $this->dispatcher),
-            new SourceFetchMiddleware($this->storage, $this->logger, $this->dispatcher)
+            new CoalesceMiddleware($logger),
+            new StaleOnErrorMiddleware($logger, $config->getDispatcher()),
+            new CacheLookupMiddleware($this->storage, $logger, $config->getDispatcher()),
+            new TagValidationMiddleware($this->storage, $logger),
+            new AsyncLockMiddleware($this->lock_factory, $this->storage, $logger, $config->getDispatcher()),
+            new SourceFetchMiddleware($this->storage, $logger, $config->getDispatcher())
         ];
 
-        $this->pipeline = new Pipeline(array_merge($middlewares, $default_middlewares));
+        $this->pipeline = new Pipeline(array_merge($config->getMiddlewares(), $default_middlewares));
+    }
+
+    /**
+     * Creates a new configuration builder for fluent configuration.
+     *
+     * @param  PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter The cache implementation
+     * @return AsyncCacheConfigBuilder
+     *
+     * @example
+     *   $manager = new AsyncCacheManager(
+     *       AsyncCacheManager::configure($cache)
+     *           ->withLogger($logger)
+     *           ->withRateLimiter($limiter)
+     *           ->build()
+     *   );
+     */
+    public static function configure(PsrCacheInterface|ReactCacheInterface|AsyncCacheAdapterInterface $cache_adapter): AsyncCacheConfigBuilder
+    {
+        return AsyncCacheConfig::builder($cache_adapter);
     }
 
     /**
@@ -114,6 +126,22 @@ final class AsyncCacheManager
      * @param  callable                $promise_factory Callback function that returns a value or a promise
      * @param  CacheOptions            $options         Caching configuration for this specific request
      * @return PromiseInterface<mixed> A promise representing the eventual result of the operation
+     *
+     * @example
+     *   // Basic usage with a synchronous return value
+     *   $manager->wrap('user:42', function () {
+     *       return ['id' => 42, 'name' => 'Alice'];
+     *   }, new CacheOptions(ttl: 60))->then(function ($value) {
+     *       // $value is the cached or freshly fetched data
+     *   });
+     *
+     * @example
+     *   // Using an async factory that returns a Promise
+     *   $manager->wrap('user:42', function () use ($http) {
+     *       return $http->getJson('https://api.example/users/42');
+     *   }, new CacheOptions(ttl: 60))->then(function ($value) {
+     *       // handle async result
+     *   });
      */
     public function wrap(string $key, callable $promise_factory, CacheOptions $options) : PromiseInterface
     {
@@ -137,6 +165,18 @@ final class AsyncCacheManager
      * @param  int                   $step    Value to add to the existing counter
      * @param  CacheOptions|null     $options Optional caching options for persistence
      * @return PromiseInterface<int> Promise resolving to the new integer value after increment
+     *
+     * @example
+     *   // Increment counter stored under 'visits' by 1
+     *   $manager->increment('visits')->then(function (int $new) {
+     *       echo "New visits count: $new\n";
+     *   });
+     *
+     * @example
+     *   // Decrement by 2
+     *   $manager->decrement('active_sessions', 2)->then(function (int $new) {
+     *       // handle new value
+     *   });
      */
     public function increment(string $key, int $step = 1, ?CacheOptions $options = null) : PromiseInterface
     {
@@ -215,6 +255,12 @@ final class AsyncCacheManager
      *
      * @param  string[]               $tags List of tag names to invalidate
      * @return PromiseInterface<bool> Resolves to true on successful invalidation
+     *
+     * @example
+     *   // Invalidate all items tagged with "user:42" (e.g. after user update)
+     *   $manager->invalidateTags(['user:42'])->then(function (bool $ok) {
+     *       // $ok === true on success
+     *   });
      */
     public function invalidateTags(array $tags) : PromiseInterface
     {
