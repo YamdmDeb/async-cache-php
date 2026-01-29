@@ -55,10 +55,14 @@ class TagValidationMiddlewareTest extends TestCase
             ->with(['t1'])
             ->willReturn(\React\Promise\resolve(['t1' => 'v1']));
 
-        $next = $this->getMockBuilder(\stdClass::class)->addMethods(['__invoke'])->getMock();
-        $next->expects($this->never())->method('__invoke');
+        $nextCalled = false;
+        $next = function () use (&$nextCalled) {
+            $nextCalled = true;
+            return \React\Promise\resolve('unexpected');
+        };
 
         $this->assertSame('fresh_data', await($this->middleware->handle($context, $next)));
+        $this->assertFalse($nextCalled, 'Next middleware should not be called');
     }
 
     public function testInvalidatesStaleItemIfTagMismatch() : void
