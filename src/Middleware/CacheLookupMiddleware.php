@@ -84,14 +84,14 @@ class CacheLookupMiddleware implements MiddlewareInterface
 
                         if ($check > $cached_item->logical_expire_time) {
                             $now = (float) $context->clock->now()->format('U.u');
-                            $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::XFetch, $now - $context->start_time, $context->options->tags, $now));
+                            $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::XFetch, $context->getElapsedTime(), $context->options->tags, $now));
                             $is_fresh = false;
                         }
                     }
 
                     if ($is_fresh) {
                         $now = (float) $context->clock->now()->format('U.u');
-                        $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, $now - $context->start_time, $context->options->tags, $now));
+                        $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Hit, $context->getElapsedTime(), $context->options->tags, $now));
                         $this->dispatcher?->dispatch(new CacheHitEvent($context->key, $cached_item->data, $now));
 
                         // If item has tags, we MUST continue to TagValidationMiddleware
@@ -107,7 +107,7 @@ class CacheLookupMiddleware implements MiddlewareInterface
 
                     if (CacheStrategy::Background === $context->options->strategy) {
                         $now = (float) $context->clock->now()->format('U.u');
-                        $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Stale, $now - $context->start_time, $context->options->tags, $now));
+                        $this->dispatcher?->dispatch(new CacheStatusEvent($context->key, CacheStatus::Stale, $context->getElapsedTime(), $context->options->tags, $now));
                         $this->dispatcher?->dispatch(new CacheHitEvent($context->key, $cached_item->data, $now));
 
                         // Background fetch - catch errors to prevent unhandled rejection since this promise is not returned
