@@ -54,4 +54,15 @@ class CacheContext
     ) {
         $this->start_time = (float) $this->clock->now()->format('U.u');
     }
+
+    /**
+     * Get the elapsed time since the start of the cache resolution.
+     *
+     * @return float Elapsed time in seconds
+     */
+    public function getElapsedTime(): float
+    {
+        $now = (float) $this->clock->now()->format('U.u');
+        return $now - $this->start_time;
+    }
 }
