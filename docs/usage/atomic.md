@@ -47,4 +47,4 @@ $manager->increment('daily_stats', 1, $options);
 ```
 
 !!! note
-    These operations are fully asynchronous and return a `Future`. Always `wait()` or attach listeners if you need the result immediately.
+    These operations are fully asynchronous and return a `PromiseInterface`. Use `->then()` for async handling or `React\\Async\\await()` for synchronous retrieval.

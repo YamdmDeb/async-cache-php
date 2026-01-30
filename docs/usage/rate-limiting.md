@@ -21,9 +21,11 @@ $factory = new RateLimiterFactory([
 
 $limiter = $factory->create();
 
-$manager = AsyncCacheBuilder::create($cache)
-    ->withRateLimiter($limiter)
-    ->build();
+$manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($cache)
+        ->withRateLimiter($limiter)
+        ->build()
+);
 ```
 
 ## How It Interacts with Cache

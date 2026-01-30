@@ -19,11 +19,14 @@ Use `withSerializer` on the builder.
 ### Using JSON
 
 ```php
+use Fyennyi\AsyncCache\AsyncCacheManager;
 use Fyennyi\AsyncCache\Serializer\JsonSerializer;
 
-$manager = AsyncCacheBuilder::create($adapter)
-    ->withSerializer(new JsonSerializer())
-    ->build();
+$manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($cache)
+        ->withSerializer(new JsonSerializer())
+        ->build()
+);
 ```
 
 ### Using Encryption
@@ -39,9 +42,11 @@ $serializer = new EncryptingSerializer(
     $key
 );
 
-$manager = AsyncCacheBuilder::create($adapter)
-    ->withSerializer($serializer)
-    ->build();
+$manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($cache)
+        ->withSerializer($serializer)
+        ->build()
+);
 ```
 
 ## Compression

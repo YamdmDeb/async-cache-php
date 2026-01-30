@@ -31,19 +31,20 @@ composer require fyennyi/async-cache-php
 
 ### Basic Setup
 
-The easiest way to create a manager is using the `AsyncCacheBuilder`.
+The easiest way to create a manager is using the fluent configuration API.
 
 ```php
-use Fyennyi\AsyncCache\AsyncCacheBuilder;
-use Fyennyi\AsyncCache\Storage\ReactCacheAdapter;
+use Fyennyi\AsyncCache\AsyncCacheManager;
 use React\Cache\ArrayCache;
 
 // 1. Setup Cache (using ReactPHP ArrayCache as an example)
-$cacheAdapter = new ReactCacheAdapter(new ArrayCache());
+$cache = new ArrayCache();
 
-// 2. Create the Manager using the Builder
-$manager = AsyncCacheBuilder::create($cacheAdapter)
-    ->build();
+// 2. Create the Manager using fluent configuration
+$manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($cache)
+        ->build()
+);
 ```
 
 ### Wrapping an Async Operation
@@ -91,6 +92,8 @@ new CacheOptions(
     serve_stale_if_limited: true,    // Return stale data if rate limited
     tags: ['geo', 'kyiv'],           // Cache tags (if adapter supports them)
     compression: false,              // Enable data compression
+    compression_threshold: 1024,     // Minimum size in bytes to trigger compression
+    fail_safe: true,                 // Catch cache exceptions and treat as misses
     x_fetch_beta: 1.0                // Beta coefficient for X-Fetch (0 to disable)
 );
 ```

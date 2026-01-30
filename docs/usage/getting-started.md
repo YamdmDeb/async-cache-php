@@ -12,7 +12,7 @@ composer require fyennyi/async-cache-php
 
 ## Basic Setup
 
-To start using the library, you need to create an instance of `AsyncCacheManager`. The recommended way is to use the `AsyncCacheBuilder`.
+To start using the library, you need to create an instance of `AsyncCacheManager`. The recommended way is to use the fluent `configure()` method.
 
 ### 1. Initialize a Cache Adapter
 
@@ -44,13 +44,15 @@ The library supports any PSR-16 compliant cache adapter or ReactPHP Cache implem
 
 ### 2. Create the Manager
 
-Use the builder to construct the manager.
+Use the fluent configuration API to construct the manager.
 
 ```php
-use Fyennyi\AsyncCache\AsyncCacheBuilder;
+use Fyennyi\AsyncCache\AsyncCacheManager;
 
-$manager = AsyncCacheBuilder::create($adapter)
-    ->build();
+$manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($cache)
+        ->build()
+);
 ```
 
 ## Wrapping Operations
@@ -66,18 +68,23 @@ $options = new CacheOptions(
     strategy: CacheStrategy::Strict // Default strategy
 );
 
-$future = $manager->wrap(
+$promise = $manager->wrap(
     'my_cache_key',
     function () {
         // Your async operation here
-        // Should return a value or a Promise/Future
+        // Should return a value or a Promise
         return perform_heavy_calculation();
     },
     $options
 );
 
-// Wait for the result
-$result = $future->wait();
+// Handle the result asynchronously
+$promise->then(function ($result) {
+    echo $result;
+});
+
+// Or wait synchronously with React\Async\await()
+$result = \React\Async\await($promise);
 ```
 
 ## Next Steps
