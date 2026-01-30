@@ -107,12 +107,15 @@ class ChainCacheAdapterTest extends TestCase
     public function testGetMultiple() : void
     {
         $keys = ['k1', 'k2'];
-        // ChainCacheAdapter implementation calls get() for each key
-        $this->l1->method('get')->willReturnMap([
-            ['k1', \React\Promise\resolve('v1')],
-            ['k2', \React\Promise\resolve(null)],
-        ]);
-        $this->l2->method('get')->with('k2')->willReturn(\React\Promise\resolve('v2'));
+        // L1 has k1, L2 has k2
+        $this->l1->method('getMultiple')->with($keys)->willReturn(
+            \React\Promise\resolve(['k1' => 'v1', 'k2' => null])
+        );
+        $this->l2->method('getMultiple')->with(['k2'])->willReturn(
+            \React\Promise\resolve(['k2' => 'v2'])
+        );
+        // Backfill to L1
+        $this->l1->expects($this->once())->method('set')->with('k2', 'v2');
 
         $res = await($this->adapter->getMultiple($keys));
         $this->assertSame(['k1' => 'v1', 'k2' => 'v2'], $res);
@@ -146,7 +149,7 @@ class ChainCacheAdapterTest extends TestCase
         $this->assertNull(await($adapter->get('k')));
         $this->assertTrue(await($adapter->set('k', 'v')));
         $this->assertTrue(await($adapter->delete('k')));
-        $this->assertSame(['k' => null], await($adapter->getMultiple(['k'])));
+        $this->assertSame([], await($adapter->getMultiple(['k'])));
         $this->assertTrue(await($adapter->clear()));
     }
 
