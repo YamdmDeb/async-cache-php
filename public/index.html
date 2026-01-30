@@ -328,23 +328,23 @@ $(document).ready(function () {
                 const data = await res.json();
                 const latency = performance.now() - start;
 
-                if (data.source === 'cache') {
-                    state.hits++;
-                    state.totalSaved += 1000;
-                    log('HIT: ' + latency.toFixed(0) + 'ms');
-                } else {
-                    state.misses++;
-                    log('MISS: ' + latency.toFixed(0) + 'ms');
-                }
-                
-                // Show response preview
+                let responsePreview = '';
                 if (data.data) {
                     try {
                         const parsed = JSON.parse(data.data);
-                        log('<details style="margin-left:20px;"><summary style="cursor:pointer;color:#666;">📦 Response</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + JSON.stringify(parsed, null, 2).substring(0, 800) + '</pre></details>');
+                        responsePreview = ' <details style="display:inline;"><summary style="cursor:pointer;color:#666;display:inline;">📦</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + JSON.stringify(parsed, null, 2).substring(0, 800) + '</pre></details>';
                     } catch {
-                        log('<details style="margin-left:20px;"><summary style="cursor:pointer;color:#666;">📦 Response</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + data.data.substring(0, 300) + '</pre></details>');
+                        responsePreview = ' <details style="display:inline;"><summary style="cursor:pointer;color:#666;display:inline;">📦</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + data.data.substring(0, 300) + '</pre></details>';
                     }
+                }
+
+                if (data.source === 'cache') {
+                    state.hits++;
+                    state.totalSaved += 1000;
+                    log('HIT: ' + latency.toFixed(0) + 'ms' + responsePreview);
+                } else {
+                    state.misses++;
+                    log('MISS: ' + latency.toFixed(0) + 'ms' + responsePreview);
                 }
 
                 updateStats();
