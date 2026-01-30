@@ -9,10 +9,10 @@ use Symfony\Component\Clock\MockClock;
 
 class CacheContextTest extends TestCase
 {
-    public function testGetElapsedTime(): void
+    public function testGetElapsedTime() : void
     {
         $clock = new MockClock();
-        $context = new CacheContext('test_key', fn() => 'data', new CacheOptions(), $clock);
+        $context = new CacheContext('test_key', fn () => 'data', new CacheOptions(), $clock);
 
         // Initially, elapsed time should be very small (close to 0)
         $elapsed1 = $context->getElapsedTime();
@@ -36,13 +36,13 @@ class CacheContextTest extends TestCase
         $this->assertLessThan(1.6, $elapsed3);
     }
 
-    public function testGetElapsedTimeIncreases(): void
+    public function testGetElapsedTimeIncreases() : void
     {
         $clock = new MockClock();
-        $context = new CacheContext('test_key', fn() => 'data', new CacheOptions(), $clock);
+        $context = new CacheContext('test_key', fn () => 'data', new CacheOptions(), $clock);
 
         $elapsed1 = $context->getElapsedTime();
-        
+
         $clock->sleep(0.1);
         $elapsed2 = $context->getElapsedTime();
 
