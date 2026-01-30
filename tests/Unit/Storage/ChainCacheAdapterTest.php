@@ -184,4 +184,30 @@ class ChainCacheAdapterTest extends TestCase
         $this->assertInstanceOf(PsrToAsyncAdapter::class, $adapters[0]);
         $this->assertInstanceOf(ReactCacheAdapter::class, $adapters[1]);
     }
+
+    public function testGetMultipleWithLayerFailure() : void
+    {
+        // L1 fails, should fallback to L2
+        $this->l1->method('getMultiple')->willReturn(
+            \React\Promise\reject(new \RuntimeException('L1 failed'))
+        );
+        $this->l2->method('getMultiple')->with(['k1'])->willReturn(
+            \React\Promise\resolve(['k1' => 'v1'])
+        );
+
+        $res = await($this->adapter->getMultiple(['k1']));
+        $this->assertSame(['k1' => 'v1'], $res);
+    }
+
+    public function testSettleAllWithEmptyPromises() : void
+    {
+        // Use reflection to test settleAll with empty array
+        $adapter = new ChainCacheAdapter([]);
+        $ref = new \ReflectionClass($adapter);
+        $method = $ref->getMethod('settleAll');
+        $method->setAccessible(true);
+
+        $result = await($method->invoke($adapter, []));
+        $this->assertSame([], $result);
+    }
 }
