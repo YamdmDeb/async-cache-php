@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AsyncCache PHP Demo</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+
+    <style>
+        body {
+            background-color: #fff;
+            margin: 0;
+            padding: 0;
+        }
+
+        .ui.menu:first-child {
+            margin-top: 0 !important;
+        }
+
+        .desktop-menu, .mobile-menu {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        .hero-section {
+            margin-top: 0 !important;
+            padding-top: 1.5em !important;
+            padding-bottom: 1.5em !important;
+        }
+
+        #log {
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .ui.statistics .statistic > .value {
+            text-transform: none;
+        }
+
+        .hero-section {
+            background: #1b1c1d !important;
+            border-radius: 0 !important;
+            margin-top: 0 !important;
+        }
+
+        .desktop-menu {
+            display: none !important;
+        }
+        @media only screen and (min-width: 768px) {
+            .desktop-menu {
+                display: flex !important;
+            }
+            .mobile-menu {
+                display: none !important;
+            }
+        }
+
+        .mobile-menu {
+            display: flex !important;
+        }
+        @media only screen and (min-width: 768px) {
+            .mobile-menu {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="ui inverted borderless menu desktop-menu" style="border-radius: 0; margin: 0;">
+    <div class="ui container">
+        <a href="#" class="header item">
+            <i class="bolt icon"></i>
+            AsyncCache PHP
+        </a>
+
+        <div class="right menu">
+            <a class="item" href="https://fyennyi.github.io/async-cache-php" target="_blank">
+                <i class="book icon"></i> Docs
+            </a>
+            <a class="item" href="https://packagist.org/packages/fyennyi/async-cache-php" target="_blank">
+                <i class="box icon"></i> Packagist
+            </a>
+            <a class="item" href="https://github.com/Fyennyi/async-cache-php" target="_blank">
+                <i class="github icon"></i> GitHub
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="ui inverted borderless menu mobile-menu" style="border-radius: 0; margin: 0;">
+    <div class="ui container">
+        <a href="#" class="header item">
+            <i class="bolt icon"></i>
+            AsyncCache PHP
+        </a>
+
+        <div class="right menu">
+            <a class="item" id="mobile-menu-toggle">
+                <i class="bars icon"></i>
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="ui inverted vertical sidebar menu">
+    <a class="item" href="https://fyennyi.github.io/async-cache-php" target="_blank">
+        <i class="book icon"></i> Documentation
+    </a>
+    <a class="item" href="https://packagist.org/packages/fyennyi/async-cache-php" target="_blank">
+        <i class="box icon"></i> Packagist
+    </a>
+    <a class="item" href="https://github.com/Fyennyi/async-cache-php" target="_blank">
+        <i class="github icon"></i> GitHub
+    </a>
+</div>
+
+<div class="ui inverted vertical segment hero-section">
+    <div class="ui container">
+        <h1 class="ui inverted header" style="font-size: 3em;">
+            <i class="bolt icon"></i>
+            <div class="content">
+                AsyncCache PHP
+                <div class="sub header" style="color: rgba(255,255,255,0.7); margin-top: 0.5em;">
+                    Asynchronous caching with ReactPHP & Fibers
+                </div>
+            </div>
+        </h1>
+    </div>
+</div>
+
+<div class="ui container" style="padding: 1em 0;">
+    <div class="ui stackable grid">
+
+        <div class="sixteen wide tablet eight wide computer column">
+            <div class="ui raised segment">
+                <h3 class="ui header">
+                    <i class="settings icon"></i>
+                    <div class="content">Test Configuration</div>
+                </h3>
+
+                <div class="ui divider"></div>
+
+                <form class="ui form">
+                    <div class="field">
+                        <label>Strategy</label>
+                        <select id="strategy" class="ui fluid dropdown">
+                            <option value="strict">Strict — wait for fresh data</option>
+                            <option value="background">Background — stale data + refresh</option>
+                            <option value="force_refresh">ForceRefresh — bypass cache</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Endpoint</label>
+                        <select id="endpoint" class="ui fluid dropdown">
+                            <option value="https://httpbin.org/delay/1">httpbin.org/delay/1 (Slow)</option>
+                            <option value="https://httpbin.org/delay/2">httpbin.org/delay/2 (Very slow)</option>
+                            <option value="https://httpbin.org/uuid">httpbin.org/uuid (Fast)</option>
+                            <option value="https://httpbin.org/json">httpbin.org/json (Static)</option>
+                        </select>
+                    </div>
+
+                    <div class="two fields">
+                        <div class="field">
+                            <label>Request count</label>
+                            <input type="number" id="count" value="5" min="1" max="20">
+                        </div>
+                        <div class="field">
+                            <label>Delay (ms)</label>
+                            <input type="number" id="delay" value="200" min="0" max="5000">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>TTL (seconds)</label>
+                        <input type="number" id="ttl" value="10" min="1" max="300">
+                    </div>
+                </form>
+
+                <div class="ui divider"></div>
+
+                <div class="ui two buttons">
+                    <button id="btn-run" class="ui teal button">
+                        <i class="play icon"></i> Run
+                    </button>
+                    <button id="btn-clear" class="ui button">
+                        <i class="trash icon"></i> Clear
+                    </button>
+                </div>
+            </div>
+
+            <div class="ui raised segment">
+                <h3 class="ui header">
+                    <i class="chart bar icon"></i>
+                    <div class="content">Statistics</div>
+                </h3>
+
+                <div class="ui divider"></div>
+
+                <div class="ui four small statistics">
+                    <div class="green statistic">
+                        <div class="value" id="stat-hits">0</div>
+                        <div class="label">HIT</div>
+                    </div>
+                    <div class="red statistic">
+                        <div class="value" id="stat-misses">0</div>
+                        <div class="label">MISS</div>
+                    </div>
+                    <div class="orange statistic">
+                        <div class="value" id="stat-rate">0%</div>
+                        <div class="label">Efficiency</div>
+                    </div>
+                    <div class="blue statistic">
+                        <div class="value" id="stat-saved">0</div>
+                        <div class="label">ms saved</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sixteen wide tablet eight wide computer column">
+            <div class="ui raised inverted segment">
+                <h3 class="ui inverted header">
+                    <i class="terminal icon"></i>
+                    <div class="content">Execution log</div>
+                </h3>
+
+                <div class="ui inverted divider"></div>
+
+                <div id="log">
+                    <div class="ui small grey text">Ready to run tests…</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="ui inverted vertical segment" style="padding: 4em 0; margin-top: 4em;">
+    <div class="ui container center aligned">
+        <p style="color: rgba(255,255,255,0.5);">
+            AsyncCache PHP &copy; 2026
+        </p>
+
+        <div class="ui horizontal inverted link list">
+            <a href="https://fyennyi.github.io/async-cache-php" class="item">
+                <i class="book icon"></i> Docs
+            </a>
+            <a href="https://packagist.org/packages/fyennyi/async-cache-php" class="item">
+                <i class="box icon"></i> Packagist
+            </a>
+            <a href="https://github.com/Fyennyi/async-cache-php" class="item">
+                <i class="github icon"></i> GitHub
+            </a>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+
+<script>
+$(document).ready(function () {
+    $('.ui.dropdown').dropdown();
+
+    $('#mobile-menu-toggle').on('click', function () {
+        $('.ui.sidebar')
+            .sidebar({
+                transition: 'overlay'
+            })
+            .sidebar('toggle');
+    });
+
+    const state = { hits: 0, misses: 0, totalSaved: 0 };
+
+    function log(msg) {
+        const time = new Date().toLocaleTimeString('en-US');
+        let icon = '';
+        if (msg.includes('HIT')) icon = '🟢 ';
+        if (msg.includes('MISS')) icon = '🟡 ';
+        if (msg.includes('Error')) icon = '🔴 ';
+
+        $('#log').append(
+            '<div style="margin-bottom:5px;">' +
+            '<span style="color:#888;">[' + time + ']</span> ' +
+            icon + msg +
+            '</div>'
+        );
+
+        $('#log').scrollTop($('#log')[0].scrollHeight);
+    }
+
+    function updateStats() {
+        const total = state.hits + state.misses;
+        const rate = total ? Math.round((state.hits / total) * 100) : 0;
+
+        $('#stat-hits').text(state.hits);
+        $('#stat-misses').text(state.misses);
+        $('#stat-rate').text(rate + '%');
+        $('#stat-saved').text(Math.round(state.totalSaved));
+    }
+
+    $('#btn-run').click(async function () {
+        const strategy = $('#strategy').val();
+        const endpoint = $('#endpoint').val();
+        const count = +$('#count').val();
+        const delay = +$('#delay').val();
+        const ttl = $('#ttl').val();
+
+        state.hits = 0;
+        state.misses = 0;
+        state.totalSaved = 0;
+        $('#log').html('');
+
+        log('🚀 Starting test: ' + strategy);
+
+        const btn = $(this).addClass('loading disabled');
+
+        for (let i = 0; i < count; i++) {
+            try {
+                const start = performance.now();
+                const res = await fetch(`/api/demo?strategy=${strategy}&endpoint=${encodeURIComponent(endpoint)}&ttl=${ttl}`);
+                const data = await res.json();
+                const latency = performance.now() - start;
+
+                if (data.source === 'cache') {
+                    state.hits++;
+                    state.totalSaved += 1000;
+                    log('HIT: ' + latency.toFixed(0) + 'ms');
+                } else {
+                    state.misses++;
+                    log('MISS: ' + latency.toFixed(0) + 'ms');
+                }
+                
+                // Show response preview
+                if (data.data) {
+                    try {
+                        const parsed = JSON.parse(data.data);
+                        log('<details style="margin-left:20px;"><summary style="cursor:pointer;color:#666;">📦 Response</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + JSON.stringify(parsed, null, 2).substring(0, 800) + '</pre></details>');
+                    } catch {
+                        log('<details style="margin-left:20px;"><summary style="cursor:pointer;color:#666;">📦 Response</summary><pre style="font-size:11px;max-height:150px;overflow:auto;background:#1b1c1d;color:#a9b7c6;padding:8px;border-radius:4px;margin-top:5px;">' + data.data.substring(0, 300) + '</pre></details>');
+                    }
+                }
+
+                updateStats();
+                if (i < count - 1) await new Promise(r => setTimeout(r, delay));
+            } catch (e) {
+                log('Error: ' + e.message);
+            }
+        }
+
+        btn.removeClass('loading disabled');
+        log('✨ Test finished!');
+    });
+
+    $('#btn-clear').click(async function () {
+        await fetch('/api/clear');
+        state.hits = 0;
+        state.misses = 0;
+        state.totalSaved = 0;
+        updateStats();
+        $('#log').html('<div class="ui small grey text">Cache cleared. Ready to test…</div>');
+    });
+});
+</script>
+
+</body>
+</html>

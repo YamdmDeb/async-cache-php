@@ -3,196 +3,263 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Fyennyi\AsyncCache\AsyncCacheManager;
-use Fyennyi\AsyncCache\CacheOptions;
+use Fyennyi\AsyncCache\CacheOptionsBuilder;
 use Fyennyi\AsyncCache\Storage\ChainCacheAdapter;
+use Psr\Http\Message\ServerRequestInterface;
+use React\Http\Browser;
 use React\Http\HttpServer;
 use React\Http\Message\Response;
 use React\Socket\SocketServer;
-use Psr\Http\Message\ServerRequestInterface;
-use React\Http\Browser;
 use function React\Async\async;
 use function React\Async\await;
 
-// --- ADAPTERS ---
+// --- SIMPLE IN-MEMORY CACHE ADAPTERS ---
 
-/**
- * L1: Fast Memory Cache
- */
-class MemoryAdapter implements \Psr\SimpleCache\CacheInterface {
+class MemoryAdapter implements \Psr\SimpleCache\CacheInterface
+{
     public static array $data = [];
-    public function get($key, $default = null): mixed { return self::$data[$key] ?? $default; }
-    public function set($key, $value, $ttl = null): bool { self::$data[$key] = $value; return true; }
-    public function delete($key): bool { unset(self::$data[$key]); return true; }
-    public function clear(): bool { self::$data = []; return true; }
-    public function getMultiple($keys, $default = null): iterable {
+    public static array $expiry = [];
+
+    public function get($key, $default = null) : mixed
+    {
+        if (isset(self::$expiry[$key]) && self::$expiry[$key] < time()) {
+            $this->delete($key);
+            return $default;
+        }
+        return self::$data[$key] ?? $default;
+    }
+    public function set($key, $value, $ttl = null) : bool
+    {
+        self::$data[$key] = $value;
+        if (null !== $ttl) {
+            self::$expiry[$key] = time() + (int)$ttl;
+        } else {
+            unset(self::$expiry[$key]);
+        }
+        return true;
+    }
+    public function delete($key) : bool
+    {
+        unset(self::$data[$key], self::$expiry[$key]);
+        return true;
+    }
+    public function clear() : bool
+    {
+        self::$data = [];
+        self::$expiry = [];
+        return true;
+    }
+    public function getMultiple($keys, $default = null) : iterable
+    {
         $results = [];
-        foreach ($keys as $key) { $results[$key] = $this->get($key, $default); }
+        foreach ($keys as $key) {
+            $results[$key] = $this->get($key, $default);
+        }
         return $results;
     }
-    public function setMultiple($values, $ttl = null): bool { return true; }
-    public function deleteMultiple($keys): bool { return true; }
-    public function has($key): bool { return isset(self::$data[$key]); }
+    public function setMultiple($values, $ttl = null) : bool
+    {
+        return true;
+    }
+    public function deleteMultiple($keys) : bool
+    {
+        return true;
+    }
+    public function has($key) : bool
+    {
+        if (isset(self::$expiry[$key]) && self::$expiry[$key] < time()) {
+            $this->delete($key);
+            return false;
+        }
+        return isset(self::$data[$key]);
+    }
 }
 
-/**
- * L2: Slow Simulated Cache (e.g. Redis over network)
- */
-class SlowAdapter implements \Psr\SimpleCache\CacheInterface {
+class SlowAdapter implements \Psr\SimpleCache\CacheInterface
+{
     public static array $data = [];
-    public function get($key, $default = null): mixed { 
-        usleep(50000); // 50ms latency simulation
-        return self::$data[$key] ?? $default; 
-    }
-    public function set($key, $value, $ttl = null): bool { 
+    public function get($key, $default = null) : mixed
+    {
         usleep(50000);
-        self::$data[$key] = $value; return true; 
+        return self::$data[$key] ?? $default;
     }
-    public function delete($key): bool { unset(self::$data[$key]); return true; }
-    public function clear(): bool { self::$data = []; return true; }
-    public function getMultiple($keys, $default = null): iterable {
+    public function set($key, $value, $ttl = null) : bool
+    {
+        usleep(50000);
+        self::$data[$key] = $value;
+        return true;
+    }
+    public function delete($key) : bool
+    {
+        unset(self::$data[$key]);
+        return true;
+    }
+    public function clear() : bool
+    {
+        self::$data = [];
+        return true;
+    }
+    public function getMultiple($keys, $default = null) : iterable
+    {
         $results = [];
-        foreach ($keys as $key) { $results[$key] = $this->get($key, $default); }
+        foreach ($keys as $key) {
+            $results[$key] = $this->get($key, $default);
+        }
         return $results;
     }
-    public function setMultiple($values, $ttl = null): bool { return true; }
-    public function deleteMultiple($keys): bool { return true; }
-    public function has($key): bool { return isset(self::$data[$key]); }
+    public function setMultiple($values, $ttl = null) : bool
+    {
+        return true;
+    }
+    public function deleteMultiple($keys) : bool
+    {
+        return true;
+    }
+    public function has($key) : bool
+    {
+        return isset(self::$data[$key]);
+    }
 }
 
-// --- TELEMETRY ---
+// --- EVENT TRACKING ---
 
-class StatsTracker {
-    public int $hits = 0;
-    public int $misses = 0;
+class StatusTracker
+{
     public ?string $lastStatus = null;
 }
-$tracker = new StatsTracker();
+$tracker = new StatusTracker();
 
-class TelemetryDispatcher implements \Psr\EventDispatcher\EventDispatcherInterface {
-    public function __construct(private StatsTracker $tracker) {}
-    public function dispatch(object $event): object {
+class EventTracker implements \Psr\EventDispatcher\EventDispatcherInterface
+{
+    public function __construct(private StatusTracker $tracker) {}
+    public function dispatch(object $event) : object
+    {
         if ($event instanceof \Fyennyi\AsyncCache\Event\CacheStatusEvent) {
             $this->tracker->lastStatus = $event->status->value;
-            if ($event->status === \Fyennyi\AsyncCache\Enum\CacheStatus::Hit) $this->tracker->hits++;
-            if ($event->status === \Fyennyi\AsyncCache\Enum\CacheStatus::Miss) $this->tracker->misses++;
         }
         return $event;
     }
 }
 
-// --- MANAGERS ---
+// Console logger
+class ConsoleLogger extends \Psr\Log\AbstractLogger
+{
+    public function log($level, $message, array $context = []) : void
+    {
+        if ('debug' === $level) {
+            return;
+        } // skip debug spam
+        $ctx = !empty($context) ? ' ' . json_encode($context) : '';
+        echo "[" . strtoupper($level) . "] {$message}{$ctx}\n";
+    }
+}
 
-$cache = new MemoryAdapter();
-$dispatcher = new TelemetryDispatcher($tracker);
+// --- CACHE MANAGERS ---
 
-// 1. Memory Only Manager (for main dashboard)
-$memoryManager = new AsyncCacheManager(
-    AsyncCacheManager::configure($cache)
-        ->withEventDispatcher($dispatcher)
+$l1Cache = new MemoryAdapter();
+$l2Cache = new SlowAdapter();
+// Note: $tracker is already defined above
+$eventTracker = new EventTracker($tracker);
+$logger = new ConsoleLogger();
+
+$l1Manager = new AsyncCacheManager(
+    AsyncCacheManager::configure($l1Cache)
+        ->withEventDispatcher($eventTracker)
+        ->withLogger($logger)
         ->build()
 );
 
-// 2. Chain Manager (Memory + Slow) for benchmark
-$chainManager = new AsyncCacheManager(
-    AsyncCacheManager::configure(new ChainCacheAdapter([
-        new MemoryAdapter(),
-        new SlowAdapter()
-    ]))->build()
+$l1l2Manager = new AsyncCacheManager(
+    AsyncCacheManager::configure(new ChainCacheAdapter([$l1Cache, $l2Cache]))
+        ->withEventDispatcher($eventTracker)
+        ->withLogger($logger)
+        ->build()
 );
 
 $browser = new Browser();
-$options = new CacheOptions(ttl: 10);
 
-// --- SERVER ---
+// --- HTTP SERVER ---
 
-$http = new HttpServer(async(function (ServerRequestInterface $request) use ($memoryManager, $chainManager, $browser, $options, $tracker) {
+$http = new HttpServer(async(function (ServerRequestInterface $request) use ($l1Manager, $l1l2Manager, $browser, $tracker) {
     $path = $request->getUri()->getPath();
 
-    // --- STATIC FILES ---
-    
-    // Serve dashboard.html as the primary entry point
-    if ($path === '/' || $path === '/dashboard') {
-        return new Response(200, ['Content-Type' => 'text/html'], file_get_contents(__DIR__ . '/dashboard.html'));
-    }
-    
-    if ($path === '/benchmark') {
-        return new Response(200, ['Content-Type' => 'text/html'], file_get_contents(__DIR__ . '/benchmark.html'));
+    // Serve index.html for root
+    if ('/' === $path) {
+        return new Response(200, ['Content-Type' => 'text/html'], file_get_contents(__DIR__ . '/index.html'));
     }
 
-    // --- API ENDPOINTS ---
+    // API: Demo endpoint with httpbin
+    if ('/api/demo' === $path) {
+        $query = $request->getUri()->getQuery();
+        parse_str($query, $params);
 
-    // 1. Slow API Demo (Coalescing Showcase)
-    if ($path === '/api/slow') {
+        $strategy = $params['strategy'] ?? 'strict';
+        $endpoint = $params['endpoint'] ?? 'https://httpbin.org/delay/1';
+        $ttl = (int)($params['ttl'] ?? 10);
+
         $start = microtime(true);
-        $tracker->lastStatus = null;
-        try {
-            $res = await($memoryManager->wrap('georgia_flag', function() use ($browser) {
-                return $browser->get('https://restcountries.com/v3.1/name/georgia')
-                    ->then(function ($response) {
-                        $data = json_decode((string)$response->getBody(), true);
-                        return $data[0]['flags']['png'] ?? '';
-                    });
-            }, new CacheOptions(ttl: 15)));
+        $cacheKey = 'demo_' . md5($endpoint);
 
-            $source = 'fresh';
-            if ($tracker->lastStatus === 'hit') $source = 'cache';
-            if ($tracker->lastStatus === 'stale') $source = 'stale_fallback';
+        try {
+            if ('force_refresh' === $strategy) {
+                unset(MemoryAdapter::$data[$cacheKey]);
+            }
+
+            // Build cache options using fluent builder with withStrategy()
+            $cacheStrategy = match ($strategy) {
+                'background' => \Fyennyi\AsyncCache\Enum\CacheStrategy::Background,
+                'force_refresh' => \Fyennyi\AsyncCache\Enum\CacheStrategy::ForceRefresh,
+                default => \Fyennyi\AsyncCache\Enum\CacheStrategy::Strict,
+            };
+
+            $options = CacheOptionsBuilder::create()
+                ->withTtl($ttl)
+                ->withStrategy($cacheStrategy)
+                ->build();
+
+            // Use AsyncCacheManager with coalesce protection
+            $result = await($l1Manager->wrap($cacheKey, function () use ($browser, $endpoint) {
+                return $browser->get($endpoint)->then(
+                    fn ($r) => (string) $r->getBody()
+                );
+            }, $options));
+
+            $latency = (microtime(true) - $start) * 1000;
+
+            // Determine source from cache status event
+            $status = $tracker->lastStatus ?? 'miss';
+            $source = match ($status) {
+                'hit', 'stale', 'x_fetch' => 'cache',
+                default => 'api'
+            };
+
+            // Parse and truncate response for display
+            $responsePreview = $result;
+            if (strlen($result) > 500) {
+                $responsePreview = substr($result, 0, 500) . '...';
+            }
 
             return Response::json([
-                'latency' => round(microtime(true) - $start, 4),
-                'data' => $res,
-                'source' => $source
+                'source' => $source,
+                'latency' => round($latency, 2),
+                'strategy' => $strategy,
+                'data' => $responsePreview
             ]);
         } catch (\Throwable $e) {
-            return Response::json(['status' => 'error', 'message' => $e->getMessage()]);
+            $latency = (microtime(true) - $start) * 1000;
+            return Response::json([
+                'source' => 'error',
+                'error' => $e->getMessage(),
+                'latency' => round($latency, 2)
+            ], 500);
         }
     }
 
-    // 2. Fast API (immediate response)
-    if ($path === '/api/fast') {
-        return Response::json(['data' => 'Fast Response ' . time()]);
-    }
-
-    // 3. Memory Benchmark
-    if ($path === '/api/memory') {
-        $start = microtime(true);
-        $res = await($memoryManager->wrap('shared_benchmark', function() use ($browser) {
-            return $browser->get('https://www.google.com')->then(fn() => "Origin OK");
-        }, $options));
-
-        return Response::json([
-            'latency' => round(microtime(true) - $start, 4),
-            'data' => $res,
-            'type' => 'Memory (L1)'
-        ]);
-    }
-
-    // 4. Chain Benchmark (L1 + L2)
-    if ($path === '/api/chain') {
-        $start = microtime(true);
-        $res = await($chainManager->wrap('shared_benchmark', function() use ($browser) {
-            return $browser->get('https://www.google.com')->then(fn() => "Origin OK");
-        }, $options));
-
-        return Response::json([
-            'latency' => round(microtime(true) - $start, 4),
-            'data' => $res,
-            'type' => 'Chain (L1+L2)'
-        ]);
-    }
-
-    // 5. Stats Endpoint for Dashboard
-    if ($path === '/api/stats') {
-        return Response::json([
-            'hits' => $tracker->hits,
-            'misses' => $tracker->misses
-        ]);
-    }
-
-    // 6. Clear Cache
-    if ($path === '/api/clear') {
-        $memoryManager->clear();
-        return Response::json(['status' => 'success']);
+    // API: Clear all caches
+    if ('/api/clear' === $path) {
+        MemoryAdapter::$data = [];
+        SlowAdapter::$data = [];
+        return Response::json(['status' => 'cleared']);
     }
 
     return new Response(404, [], 'Not Found');
