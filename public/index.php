@@ -255,6 +255,14 @@ $http = new HttpServer(async(function (ServerRequestInterface $request) use ($l1
         }
     }
 
+    // API: Stats endpoint
+    if ('/api/stats' === $path) {
+        return Response::json([
+            'hits' => $tracker->hits,
+            'misses' => $tracker->misses
+        ]);
+    }
+
     // API: Clear all caches
     if ('/api/clear' === $path) {
         MemoryAdapter::$data = [];
